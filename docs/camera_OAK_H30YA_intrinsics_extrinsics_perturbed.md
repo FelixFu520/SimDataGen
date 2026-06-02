@@ -34,7 +34,7 @@
 | `perturbed_pinhole_like` | `.../fisheye_cams_pinhole_like.yaml` | `.../oak_camera_texture_perturbed_pinhole_like/` | `.../oak_camera_4lut_2H30YA_perturbed_pinhole_like.usd` |
 | `perturbed_fisheye_like` | `.../fisheye_cams_fisheye_like.yaml` | `.../oak_camera_texture_perturbed_fisheye_like/` | `.../oak_camera_4lut_2H30YA_perturbed_fisheye_like.usd` |
 | `perturbed_extrinsics_change` | `.../fisheye_cams_extrinsics_change.yaml` | 复用 `assets/cameras/oak_camera_texture/` | `.../oak_camera_4lut_2H30YA_perturbed_extrinsics_change.usd` |
-| `perturbed_small_change_extrinsics` | 同上 + `--perturb-extrinsics --seed N` | 随内参 profile | 联合 suffix 的 USD |
+| `perturbed_small_change_extrinsics` | `.../fisheye_cams_small_change_extrinsics.yaml` | 同 `perturbed_small_change` | `.../oak_camera_4lut_2H30YA_perturbed_small_change_extrinsics.usd` |
 
 ---
 
@@ -105,8 +105,24 @@ mkdir -p docs/oak_camera_perturbed
 按 yaml 内参为 CAM_A..D 各生成 2 个 EXR：`rayEnterDirection`、`rayExitPosition`。
 
 ```bash
+# small_change
 ./app/python.sh tools/cameras/oak_generate_lut_textures.py \
     --yaml docs/oak_camera_perturbed/fisheye_cams_small_change.yaml \
+    --output_dir assets/cameras/oak_camera_texture_perturbed_small_change
+
+# pinhole_like
+./app/python.sh tools/cameras/oak_generate_lut_textures.py \
+    --yaml docs/oak_camera_perturbed/fisheye_cams_pinhole_like.yaml \
+    --output_dir assets/cameras/oak_camera_texture_perturbed_pinhole_like
+
+# fisheye_like
+./app/python.sh tools/cameras/oak_generate_lut_textures.py \
+    --yaml docs/oak_camera_perturbed/fisheye_cams_fisheye_like.yaml \
+    --output_dir assets/cameras/oak_camera_texture_perturbed_fisheye_like
+
+# small_change + 外参（内参与 small_change 相同，EXR 可复用上一行目录；也可单独输出）
+./app/python.sh tools/cameras/oak_generate_lut_textures.py \
+    --yaml docs/oak_camera_perturbed/fisheye_cams_small_change_extrinsics.yaml \
     --output_dir assets/cameras/oak_camera_texture_perturbed_small_change
 ```
 
@@ -125,12 +141,31 @@ mkdir -p docs/oak_camera_perturbed
 
 #### 3.1 复制基准 USD
 
+与步骤 ① 各套 yaml 一一对应（`extrinsics_change` 仅改外参，同样需复制一份 USD）：
+
 ```bash
+# small_change
 cp assets/cameras/oak_camera_4lut_2H30YA.usd \
    assets/cameras/oak_camera_4lut_2H30YA_perturbed_small_change.usd
+
+# pinhole_like
+cp assets/cameras/oak_camera_4lut_2H30YA.usd \
+   assets/cameras/oak_camera_4lut_2H30YA_perturbed_pinhole_like.usd
+
+# fisheye_like
+cp assets/cameras/oak_camera_4lut_2H30YA.usd \
+   assets/cameras/oak_camera_4lut_2H30YA_perturbed_fisheye_like.usd
+
+# extrinsics_change（仅外参）
+cp assets/cameras/oak_camera_4lut_2H30YA.usd \
+   assets/cameras/oak_camera_4lut_2H30YA_perturbed_extrinsics_change.usd
+
+# small_change + 外参
+cp assets/cameras/oak_camera_4lut_2H30YA.usd \
+   assets/cameras/oak_camera_4lut_2H30YA_perturbed_small_change_extrinsics.usd
 ```
 
-内外参联合扰动时，在**已 bake 内参的副本**上再改外参即可（或一步复制后依次执行 3.2 → 3.3）。
+内外参联合套件：复制后依次执行 3.2 → 3.3 → 3.4（`--seed` 与步骤 ① 一致）。
 
 #### 3.2 Bake 内参 + 自动 maskRadius
 
@@ -139,6 +174,7 @@ cp assets/cameras/oak_camera_4lut_2H30YA.usd \
 写入 4 路鱼眼的 `omni:calibration:*`、从 EXR 自动估计 `maskRadius`（`--mask_center calibration`）、修正 `verticalAperture`，并为 2 路 H30YA 写入分辨率。
 
 ```bash
+# small_change
 ./app/python.sh tools/cameras/oak_bake_camera_intrinsics.py \
     --usd assets/cameras/oak_camera_4lut_2H30YA_perturbed_small_change.usd \
     --yaml docs/oak_camera_perturbed/fisheye_cams_small_change.yaml \
@@ -146,7 +182,36 @@ cp assets/cameras/oak_camera_4lut_2H30YA.usd \
     --mask_center calibration \
     --resolution CAM_Front=1920x1200 \
     --resolution CAM_Back=1920x1200
+
+# pinhole_like
+./app/python.sh tools/cameras/oak_bake_camera_intrinsics.py \
+    --usd assets/cameras/oak_camera_4lut_2H30YA_perturbed_pinhole_like.usd \
+    --yaml docs/oak_camera_perturbed/fisheye_cams_pinhole_like.yaml \
+    --texture_dir assets/cameras/oak_camera_texture_perturbed_pinhole_like \
+    --mask_center calibration \
+    --resolution CAM_Front=1920x1200 \
+    --resolution CAM_Back=1920x1200
+
+# fisheye_like
+./app/python.sh tools/cameras/oak_bake_camera_intrinsics.py \
+    --usd assets/cameras/oak_camera_4lut_2H30YA_perturbed_fisheye_like.usd \
+    --yaml docs/oak_camera_perturbed/fisheye_cams_fisheye_like.yaml \
+    --texture_dir assets/cameras/oak_camera_texture_perturbed_fisheye_like \
+    --mask_center calibration \
+    --resolution CAM_Front=1920x1200 \
+    --resolution CAM_Back=1920x1200
+
+# small_change + 外参（内参 bake 同 small_change）
+./app/python.sh tools/cameras/oak_bake_camera_intrinsics.py \
+    --usd assets/cameras/oak_camera_4lut_2H30YA_perturbed_small_change_extrinsics.usd \
+    --yaml docs/oak_camera_perturbed/fisheye_cams_small_change_extrinsics.yaml \
+    --texture_dir assets/cameras/oak_camera_texture_perturbed_small_change \
+    --mask_center calibration \
+    --resolution CAM_Front=1920x1200 \
+    --resolution CAM_Back=1920x1200
 ```
+
+`extrinsics_change` 仅改外参，**跳过**本步。
 
 `maskRadius` 由 bake 脚本从 EXR 自动估计（圆心为 Kalibr `cx/cy`，半径为 EXR 可渲染区域在圆心处的外接圆；运行时 `CameraRig` 还会用 rayEnter EXR 生成 bitmap mask，比纯圆形更贴边）。
 
@@ -171,10 +236,28 @@ cp assets/cameras/oak_camera_4lut_2H30YA.usd \
 工具：`tools/cameras/oak_set_camera_lut_texture_paths.py`
 
 ```bash
+# small_change
 ./app/python.sh tools/cameras/oak_set_camera_lut_texture_paths.py \
     --usd assets/cameras/oak_camera_4lut_2H30YA_perturbed_small_change.usd \
     --texture_dir assets/cameras/oak_camera_texture_perturbed_small_change
+
+# pinhole_like
+./app/python.sh tools/cameras/oak_set_camera_lut_texture_paths.py \
+    --usd assets/cameras/oak_camera_4lut_2H30YA_perturbed_pinhole_like.usd \
+    --texture_dir assets/cameras/oak_camera_texture_perturbed_pinhole_like
+
+# fisheye_like
+./app/python.sh tools/cameras/oak_set_camera_lut_texture_paths.py \
+    --usd assets/cameras/oak_camera_4lut_2H30YA_perturbed_fisheye_like.usd \
+    --texture_dir assets/cameras/oak_camera_texture_perturbed_fisheye_like
+
+# small_change + 外参（LUT 目录同 small_change）
+./app/python.sh tools/cameras/oak_set_camera_lut_texture_paths.py \
+    --usd assets/cameras/oak_camera_4lut_2H30YA_perturbed_small_change_extrinsics.usd \
+    --texture_dir assets/cameras/oak_camera_texture_perturbed_small_change
 ```
+
+`extrinsics_change` 复用原版 `assets/cameras/oak_camera_texture/`，**跳过**本步。
 
 #### 3.4 写入外参（bake 到 USD）
 
@@ -182,36 +265,24 @@ cp assets/cameras/oak_camera_4lut_2H30YA.usd \
 从 yaml 读取 4 路鱼眼的 `T_cam_imu`，写入各相机 prim 的 Translate / RotateXYZ。
 
 ```bash
+# extrinsics_change（仅外参；跳过 3.2 / 3.3）
 ./app/python.sh tools/cameras/oak_bake_camera_extrinsics.py \
     --usd assets/cameras/oak_camera_4lut_2H30YA_perturbed_extrinsics_change.usd \
     --yaml docs/oak_camera_perturbed/fisheye_cams_extrinsics_change.yaml \
+    --perturb-pinholes \
+    --seed 0
+
+# small_change + 外参（先完成 3.2 / 3.3，再 bake 外参）
+./app/python.sh tools/cameras/oak_bake_camera_extrinsics.py \
+    --usd assets/cameras/oak_camera_4lut_2H30YA_perturbed_small_change_extrinsics.usd \
+    --yaml docs/oak_camera_perturbed/fisheye_cams_small_change_extrinsics.yaml \
     --perturb-pinholes \
     --seed 0
 ```
 
 `--perturb-pinholes`：yaml 不含 CAM_Front / CAM_Back 时，对两路针孔相机在**当前 USD 位姿**上施加与步骤 ① 相同量级、相同 `--seed` 的随机扰动（偏移 `{505,606}`）。
 
-**仅外参扰动：**
-
-```bash
-mkdir -p docs/oak_camera_perturbed
-
-./app/python.sh tools/cameras/oak_generate_perturbed_yaml.py \
-    --profile extrinsics_change --seed 0 \
-    --output docs/oak_camera_perturbed/fisheye_cams_extrinsics_change.yaml
-
-cp assets/cameras/oak_camera_4lut_2H30YA.usd \
-   assets/cameras/oak_camera_4lut_2H30YA_perturbed_extrinsics_change.usd
-
-./app/python.sh tools/cameras/oak_bake_camera_extrinsics.py \
-    --usd assets/cameras/oak_camera_4lut_2H30YA_perturbed_extrinsics_change.usd \
-    --yaml docs/oak_camera_perturbed/fisheye_cams_extrinsics_change.yaml \
-    --perturb-pinholes --seed 0
-```
-
-内参与 LUT 保持原版，无需步骤 ② 及 3.2 / 3.3。
-
-**内外参联合扰动：** 步骤 ① 使用 `--perturb-extrinsics --seed N`，完成 3.2 / 3.3 后执行上式 bake（`--seed` 与步骤 ① 一致）。
+仅内参 profile（`small_change` / `pinhole_like` / `fisheye_like`）**跳过**本步。`extrinsics_change` 跳过步骤 ② 及 3.2 / 3.3。
 
 ---
 
