@@ -1,0 +1,74 @@
+#开启持久化模式，防止驱动频繁重载
+nvidia-smi -pm 1
+
+SEED_ENV=$1
+NUM_PATHS_ENV=$2
+NUM_POINTS_ENV=$3
+CAMERA_NAME=$4
+
+PROJECT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+SCENE_USD_URL="${PROJECT_DIR}/assets_extern/TaoBao08_01/81_ConvenienceStore/81_ConvenienceStore.usd"
+OUTPUT_DIR="${PROJECT_DIR}/workdir/taobao08_01_81_ConvenienceStore_${SEED_ENV}_${NUM_PATHS_ENV}_${NUM_POINTS_ENV}"
+OCCUPANCY_RESOLUTION=0.25
+NUM_POINTS=$NUM_POINTS_ENV
+NUM_PATHS=$NUM_PATHS_ENV
+MAX_ANGLE_DEVIATION=4.0
+ERODE_ITERATIONS=1
+OBSTACLE_DILATE_ITERATIONS=1
+OBSTACLE_ENVELOPE_ITERATIONS=20
+STEP_SIZE_XY=$OCCUPANCY_RESOLUTION
+STEP_SIZE_Z=$OCCUPANCY_RESOLUTION
+MAX_DZ_PER_STEP=$OCCUPANCY_RESOLUTION
+MIN_PATH_COMPACT_WINDOW=10
+MIN_PATH_EXTENT=$(awk "BEGIN{print $MIN_PATH_COMPACT_WINDOW * $OCCUPANCY_RESOLUTION / 2}")
+MAX_PATH_GENERATION_ATTEMPTS=100000
+
+echo "SEED_ENV: $SEED_ENV"
+echo "NUM_PATHS_ENV: $NUM_PATHS_ENV"
+echo "CAMERA_NAME: $CAMERA_NAME"
+echo "OUTPUT_DIR: $OUTPUT_DIR"
+echo "OCCUPANCY_RESOLUTION: $OCCUPANCY_RESOLUTION"
+echo "NUM_POINTS: $NUM_POINTS"
+echo "NUM_PATHS: $NUM_PATHS"
+echo "MAX_ANGLE_DEVIATION: $MAX_ANGLE_DEVIATION"
+echo "ERODE_ITERATIONS: $ERODE_ITERATIONS"
+echo "OBSTACLE_DILATE_ITERATIONS: $OBSTACLE_DILATE_ITERATIONS"
+echo "OBSTACLE_ENVELOPE_ITERATIONS: $OBSTACLE_ENVELOPE_ITERATIONS"
+echo "STEP_SIZE_XY: $STEP_SIZE_XY"
+echo "STEP_SIZE_Z: $STEP_SIZE_Z"
+echo "MAX_DZ_PER_STEP: $MAX_DZ_PER_STEP"
+echo "MIN_PATH_EXTENT: $MIN_PATH_EXTENT"
+echo "MIN_PATH_COMPACT_WINDOW: $MIN_PATH_COMPACT_WINDOW"
+echo "MAX_PATH_GENERATION_ATTEMPTS: $MAX_PATH_GENERATION_ATTEMPTS"
+
+# 切换到项目根目录
+cd "$PROJECT_DIR"
+
+# 创建软链接，让isaacsim可以识别到资产
+ln -s ${PROJECT_DIR}/../5.1_asset /root/5.1_asset
+
+# 生成数据
+./app/python.sh gen_data.py \
+--seed $SEED_ENV \
+--scene_usd_url $SCENE_USD_URL \
+--camera_usd_url $CAMERA_NAME \
+--output_dir $OUTPUT_DIR \
+--occupancy_resolution $OCCUPANCY_RESOLUTION \
+--num_points $NUM_POINTS \
+--num_paths $NUM_PATHS \
+--max_angle_deviation $MAX_ANGLE_DEVIATION \
+--erode_iterations $ERODE_ITERATIONS \
+--obstacle_dilate_iterations $OBSTACLE_DILATE_ITERATIONS \
+--obstacle_envelope_iterations $OBSTACLE_ENVELOPE_ITERATIONS \
+--step_size_xy $STEP_SIZE_XY \
+--step_size_z $STEP_SIZE_Z \
+--max_dz_per_step $MAX_DZ_PER_STEP \
+--min_path_extent $MIN_PATH_EXTENT \
+--min_path_compact_window $MIN_PATH_COMPACT_WINDOW \
+--max_path_generation_attempts $MAX_PATH_GENERATION_ATTEMPTS \
+
+# 可视化数据
+./app/python.sh project_cloud.py \
+--data_dir $OUTPUT_DIR \
+--output_dir $OUTPUT_DIR/vis \
+--show_num 4

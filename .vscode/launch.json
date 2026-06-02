@@ -1,0 +1,85 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "capture_and_project",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "tools/capture_and_project.py",
+            "console": "integratedTerminal",
+            "env": {
+                "RESOURCE_NAME": "IsaacSim"
+            },
+            "python": "${workspaceFolder}/app/kit/python/bin/python3",
+            "envFile": "${workspaceFolder}/.vscode/.standalone_examples.env",
+            "preLaunchTask": "setup_python_env",
+            "args": [
+                "--scene_usd", "/home/fufa/projects2026/SimDataGen/asset_extern/TaoBao03/108_Bazaar/Demo.usd",
+                "--camera_usd", "/home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H30YA.usd",
+                "--output_dir", "/home/fufa/projects2026/SimDataGen/workdir/capture_and_project",
+                "--xyz", "36.375", "-18.375", "0.875",
+                "--rpy", "0.0", "0.0", "0.0",
+                "--frame_id", "0000"
+            ]
+        },
+        {
+            "name": "gen_data",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "gen_data.py",
+            "console": "integratedTerminal",
+            "env": {
+                "RESOURCE_NAME": "IsaacSim"
+            },
+            "python": "${workspaceFolder}/app/kit/python/bin/python3",
+            "envFile": "${workspaceFolder}/.vscode/.standalone_examples.env",
+            "preLaunchTask": "setup_python_env",
+            "args": [
+                "--seed", "0",
+                "--scene_usd_url", "/home/fufa/projects2026/SimDataGen/asset_extern/TaoBao03/108_Bazaar/Demo.usd",
+                "--camera_usd_url", "/home/fufa/projects2026/SimDataGen/assets/cameras/ZED_X.usdc",
+                "--output_dir", "/home/fufa/projects2026/SimDataGen/workdir/108_Bazaar_ZEDX",
+                "--occupancy_resolution", "0.25",
+                "--num_points", "60",
+                "--num_paths", "1",
+                "--max_angle_deviation", "4",
+                "--erode_iterations", "2",
+                "--obstacle_dilate_iterations", "1",
+                "--obstacle_envelope_iterations", "10",
+                "--step_size_xy", "0.25",
+                "--step_size_z", "0.25",
+                "--max_dz_per_step", "0.25",
+                "--min_path_extent", "1",
+                "--min_path_compact_window", "10",
+                "--max_path_generation_attempts", "10000"
+            ]
+        },
+        {
+            "name": "Python: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "env": {
+                "RESOURCE_NAME": "IsaacSim"
+            },
+            "python": "${workspaceFolder}/app/kit/python/bin/python3",
+            "debugAdapterPython": "${workspaceFolder}/app/kit/python/bin/python3",
+            "debugLauncherPython": "${workspaceFolder}/app/kit/python/bin/python3",
+            "envFile": "${workspaceFolder}/.vscode/.standalone_examples.env",
+            "preLaunchTask": "setup_python_env"
+        },
+        {
+            "name": "Python: Attach (windows-x86_64/linux-x86_64)",
+            "type": "debugpy",
+            "request": "attach",
+            "connect": {
+                "host": "localhost",
+                "port": 3000
+            }
+        }
+    ]
+}

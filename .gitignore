@@ -1,3 +1,14 @@
+# ignore
+assets/cameras/oak_camera_4lut_2H30YA_perturbed_*.usd
+assets/cameras/perturbed_camera/
+docs/oak_camera_perturbed/
+.vscode/
+app
+asset_extern
+asset_internal
+assets/cameras/oak_camera_texture*
+workdir*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
