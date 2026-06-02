@@ -13,9 +13,10 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="/root/vepfs/isaacsim/DataGen/scripts"
-ONE_TASK_SCRIPT="/root/vepfs/isaacsim/DataGen/submit_all_seed_one_task.sh"
-CAMERA_NAME=${1:-"4cam-lut-2H30YA"}
+PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_DIR="${PROJECT_DIR}/scripts/scripts"
+ONE_TASK_SCRIPT="${SCRIPT_DIR}/submit_all_seed_one_task.sh"
+CAMERA_NAME=${1:-"${PROJECT_DIR}/assets/cameras/oak_camera_4lut_2H30YA.usd"}
 
 if [[ ! -x "${ONE_TASK_SCRIPT}" ]]; then
   echo "错误: 未找到可执行脚本 ${ONE_TASK_SCRIPT}" >&2

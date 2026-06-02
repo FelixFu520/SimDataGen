@@ -32,7 +32,7 @@ GPU_TYPE=${12}
 FAMILY=${13}
 GPU_NUMBER=${14:-1}
 
-PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SCRIPT_DIR="${PROJECT_DIR}/scripts"
 TASK_SCRIPT="${SCRIPT_DIR}/${TASK_NAME}.sh"
 
@@ -46,11 +46,11 @@ if [[ -z "${VOLC_AK:-}" || -z "${VOLC_SK:-}" || -z "${VOLC_PASSWD:-}" ]]; then
   exit 1
 fi
 
-cd "$(dirname "$0")"
+cd "$PROJECT_DIR"
 
 for ((i = 0; i < SEED_COUNT; i++)); do
   SEED_ENV=$((SEED_START + i))
-  python submit_volcengine.py --ak "${VOLC_AK}" --sk "${VOLC_SK}" --private_image_password "${VOLC_PASSWD}" \
+  python tools/volcengine/submit_volcengine.py --ak "${VOLC_AK}" --sk "${VOLC_SK}" --private_image_password "${VOLC_PASSWD}" \
     --task_name "${TASK_NAME}_${CAMERA_NAME_ENV}_seed${SEED_ENV}_paths${NUM_PATHS_ENV}_points${NUM_POINTS_ENV}" \
     --command "${TASK_SCRIPT} ${SEED_ENV} ${NUM_PATHS_ENV} ${NUM_POINTS_ENV} ${CAMERA_NAME_ENV}" \
     --resource_queue_id "${RESOURCE_QUEUE_ID}" \
