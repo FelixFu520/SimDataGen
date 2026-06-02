@@ -1,3 +1,10 @@
+# ignore
+app
+asset_extern
+asset_internal
+assets/cameras/oak_camera_texture*
+workdir*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
