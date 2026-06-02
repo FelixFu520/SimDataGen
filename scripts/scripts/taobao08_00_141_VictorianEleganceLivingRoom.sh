@@ -6,7 +6,7 @@ NUM_PATHS_ENV=$2
 NUM_POINTS_ENV=$3
 CAMERA_NAME=$4
 
-PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+PROJECT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 SCENE_USD_URL="${PROJECT_DIR}/assets_extern/TaoBao08_00/141_VictorianEleganceLivingRoom/141_VictorianEleganceLivingRoom.usd"
 OUTPUT_DIR="${PROJECT_DIR}/workdir/taobao08_00_141_VictorianEleganceLivingRoom_${SEED_ENV}_${NUM_PATHS_ENV}_${NUM_POINTS_ENV}"
 OCCUPANCY_RESOLUTION=0.1
@@ -51,7 +51,7 @@ ln -s ${PROJECT_DIR}/../5.1_asset /root/5.1_asset
 ./app/python.sh gen_data.py \
 --seed $SEED_ENV \
 --scene_usd_url $SCENE_USD_URL \
---camera_name $CAMERA_NAME \
+--camera_usd_url $CAMERA_NAME \
 --output_dir $OUTPUT_DIR \
 --occupancy_resolution $OCCUPANCY_RESOLUTION \
 --num_points $NUM_POINTS \
