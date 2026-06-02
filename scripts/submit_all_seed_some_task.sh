@@ -14,9 +14,13 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+# echo "PROJECT_DIR($0): ${PROJECT_DIR}"
 SCRIPT_DIR="${PROJECT_DIR}/scripts/scripts"
-ONE_TASK_SCRIPT="${SCRIPT_DIR}/submit_all_seed_one_task.sh"
-CAMERA_NAME=${1:-"${PROJECT_DIR}/assets/cameras/oak_camera_4lut_2H30YA.usd"}
+# echo "SCRIPT_DIR($0): ${SCRIPT_DIR}"
+ONE_TASK_SCRIPT="${PROJECT_DIR}/scripts/submit_all_seed_one_task.sh"
+# echo "ONE_TASK_SCRIPT($0): ${ONE_TASK_SCRIPT}"
+CAMERA_NAME=${1:-"oak_camera_4lut_2H30YA"}
+# echo "CAMERA_NAME($0): ${CAMERA_NAME}"
 
 if [[ ! -x "${ONE_TASK_SCRIPT}" ]]; then
   echo "错误: 未找到可执行脚本 ${ONE_TASK_SCRIPT}" >&2
@@ -28,7 +32,7 @@ TASKS=(
   # Intime_Home场景
   # (1)第一批生成数据, 使用4cam-lut相机, DataGen_omni代码，每个场景生成9600帧数据
   # intime_factory_000  # OKK
-  # intime_home_000     # OKK
+  intime_home_000     # OKK
   # intime_home_001     # OKK
   # intime_home_002     # OKK
   # intime_home_003     # OKK
@@ -454,7 +458,7 @@ cd "$(dirname "$0")"
 for task_name in "${TASKS[@]}"; do
   echo "提交 task: ${task_name}"
   # 往L4 Task队列中提交任务
-  # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 50 8 10 60 "${task_name}" "q-20260429225420-jrwjn" True ml.gni3.48xlarge 8 48 NVIDIA-L4 ml.gni3 1
+  bash submit_all_seed_one_task.sh ${CAMERA_NAME} 100 6 10 60 "${task_name}" "q-20260429225420-jrwjn" True ml.gni3.48xlarge 8 48 NVIDIA-L4 ml.gni3 1
   
   # 往L4 Develop队列提交任务
   # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 50 24 40 10 "${task_name}" "q-20260507093353-7r9k8" True ml.gni3.48xlarge 8 48 NVIDIA-L4 ml.gni3 1

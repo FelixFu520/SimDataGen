@@ -5,6 +5,7 @@ docs/oak_camera_perturbed/
 .vscode/
 app
 asset_extern
+assets_extern
 asset_internal
 assets/cameras/oak_camera_texture*
 workdir*

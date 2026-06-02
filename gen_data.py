@@ -267,7 +267,7 @@ if __name__ == "__main__":
     #   3. rig.initialize(attach_depth=True, attach_semantic=True)
     #      - attach distance_to_image_plane / semantic_segmentation / instance_id_segmentation
     camera_rig = CameraRig(
-        camera_usd_path=args.camera_usd_url,
+        camera_usd_path=os.path.join(os.path.dirname(__file__), "assets/cameras", f"{args.camera_usd_url}.usd"),
         world=world,
         stage=stage,
         rig_prim_path="/World/camera_rig",
