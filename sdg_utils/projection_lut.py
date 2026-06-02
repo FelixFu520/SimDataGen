@@ -9,16 +9,16 @@ import numpy as np
 # rayEnterDirection.exr 有效像素判定阈值(与 RTX 渲染 FOV 对齐)。
 # EXR 每像素存 RTX 相机系 (X右,Y上,Z后) 单位射线方向;无效 FOV 外像素为零向量。
 #
-# _RAY_NORM_MIN：过滤 FOV 外零向量。有效像素 norm≈1,无效≈0;0.25 留浮点容差。
+# _RAY_NORM_MIN:过滤 FOV 外零向量。有效像素 norm≈1,无效≈0;0.25 留浮点容差。
 #   调大 → mask 缩小,边界 norm 略低者可能被误删;
 #   调小 → mask 扩大,可能纳入 FOV 外无效像素。
 #
-# _RENDERABLE_DIRZ_MAX：过滤 EXR 有值但 RTX 不渲染的黑角(dirZ 偏正,指向相机后方)。
+# _RENDERABLE_DIRZ_MAX:过滤 EXR 有值但 RTX 不渲染的黑角(dirZ 偏正,指向相机后方)。
 #   调大 → mask 扩大,含黑角,与 RGB/depth 有效区错位;
 #   调小 → mask 缩小,边缘有效像素可能被裁掉。
 #
 # 仅影响 Python 侧 mask 判定(save_cameras_mask、depth 反投影等),不改变 RTX 渲染。
-# tools/cameras/compute_mask_radius.py 有同名常量,修改时须同步。
+# tools/cameras/oak_compute_mask_radius.py 须与此处阈值保持一致。
 _RAY_NORM_MIN = 0.25
 _RENDERABLE_DIRZ_MAX = 0.2
 
@@ -47,6 +47,43 @@ def mask_from_lut_enter_exr(data: np.ndarray) -> np.ndarray:
     norm = np.linalg.norm(data, axis=2)
     valid = (norm > _RAY_NORM_MIN) & (data[:, :, 2] < _RENDERABLE_DIRZ_MAX)
     return valid.astype(np.uint8) * 255
+
+
+def compute_mask_radius_from_enter_data(
+    data: np.ndarray,
+    *,
+    scale: float = 1.0,
+    center_x: float | None = None,
+    center_y: float | None = None,
+) -> float:
+    """从 rayEnterDirection 数组估计圆形 mask 半径(像素)。
+
+    在圆心处取覆盖所有「可渲染」像素的最小外接圆半径(ceil)。
+    center_x/y 为 None 时使用图像几何中心。
+    """
+    h, w = data.shape[:2]
+    valid = mask_from_lut_enter_exr(data) > 0
+    if not np.any(valid):
+        raise RuntimeError("no renderable pixels in LUT enter data")
+    cx = w / 2.0 if center_x is None else float(center_x)
+    cy = h / 2.0 if center_y is None else float(center_y)
+    ys, xs = np.where(valid)
+    dist = np.sqrt((xs - cx) ** 2 + (ys - cy) ** 2)
+    return float(np.ceil(dist.max())) * scale
+
+
+def compute_mask_radius_from_enter_exr(
+    exr_path: str,
+    *,
+    scale: float = 1.0,
+    center_x: float | None = None,
+    center_y: float | None = None,
+) -> float:
+    """从 rayEnterDirection.exr 估计圆形 mask 半径(像素)。"""
+    data = read_lut_enter_exr(exr_path)
+    return compute_mask_radius_from_enter_data(
+        data, scale=scale, center_x=center_x, center_y=center_y
+    )
 
 
 def sample_lut_rays_at_pixels(
@@ -90,7 +127,7 @@ def depth_to_pointcloud_lut(
     norm = np.linalg.norm(rays_rtx, axis=1, keepdims=True)
     rays_rtx = rays_rtx / np.maximum(norm, 1e-12)
 
-    # distance_to_image_plane：沿 RTX -Z(相机前方)的距离
+    # distance_to_image_plane:沿 RTX -Z(相机前方)的距离
     denom = np.maximum(-rays_rtx[:, 2], 1e-6)
     t = d / denom
     pts_rtx = rays_rtx * t[:, None]
