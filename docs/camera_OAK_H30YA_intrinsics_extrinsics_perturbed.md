@@ -13,7 +13,7 @@
 | **内参 — 小幅漂移** | `small_change` | ±2% 量级标定漂移，评估模型对轻微内参误差的鲁棒性 | 4 路 omni 内参 + LUT EXR + `maskRadius` |
 | **内参 — 针孔倾向** | `pinhole_like` | 降低 xi、减弱 radtan，成像更接近针孔 | 同上 |
 | **内参 — 鱼眼倾向** | `fisheye_like` | 提高 xi、增强 radtan，成像更接近 omni/鱼眼 | 同上 |
-| **外参扰动** | `extrinsics_change` | 评估安装/标定外参偏差 | 6 路相机在 rig 内的 **Translate / Orientation**（USD 位姿） |
+| **外参扰动** | `extrinsics_change` | 评估安装/标定外参偏差 | 6 路相机 **仅 xyz 平移** |
 | **内外参联合** | 内参 profile + `--perturb-extrinsics` | 同时考察内参漂移与外参偏差 | 内参 yaml + EXR + 扰动后 `T_cam_imu` |
 
 **始终不变（除非做外参扰动）：**
@@ -39,6 +39,39 @@
 ---
 
 ## 3. 统一三步流程
+
+也可使用一键脚本（推荐）：每次运行前**清空** `assets/cameras/perturbed_camera/`，生成 yaml、EXR、USD 到该目录；USD 固定名为 `oak_camera_4lut_2H30YA_perturbed.usd`。
+
+```bash
+# 仅内参
+./scripts/gen_oak_camera_4lut_2H30YA_perturbed.sh --variant small_change
+./scripts/gen_oak_camera_4lut_2H30YA_perturbed.sh --variant pinhole_like
+./scripts/gen_oak_camera_4lut_2H30YA_perturbed.sh --variant fisheye_like
+
+# 仅外参（xyz + yaw，默认 ±1mm / ±0.3°）
+./scripts/gen_oak_camera_4lut_2H30YA_perturbed.sh --variant extrinsics_change --seed 0
+
+# 内外参联合（任选其一写法）
+./scripts/gen_oak_camera_4lut_2H30YA_perturbed.sh --variant small_change --with-extrinsics --seed 0
+./scripts/gen_oak_camera_4lut_2H30YA_perturbed.sh --variant small_change_extrinsics --seed 0
+./scripts/gen_oak_camera_4lut_2H30YA_perturbed.sh --variant pinhole_like_extrinsics --seed 1
+```
+
+输出目录结构：
+
+```
+assets/cameras/perturbed_camera/
+  profile.txt                        # variant / seed 记录
+  fisheye_cams.yaml
+  texture/                           # 8× EXR
+  oak_camera_4lut_2H30YA_perturbed.usd
+```
+
+采集时使用：`--camera_usd_url assets/cameras/perturbed_camera/oak_camera_4lut_2H30YA_perturbed.usd`
+
+---
+
+### 手动分步（与脚本等价）
 
 ```mermaid
 flowchart LR
@@ -79,7 +112,12 @@ mkdir -p docs/oak_camera_perturbed
 
 **外参扰动（程序随机、小幅度、可复现）：**
 
-在相机坐标系对 `T_cam_imu` 右乘小随机变换：平移各轴 ±3 mm、旋转各轴 ±1.5°（可通过 `--trans-range-mm` / `--rot-range-deg` 调整）。每路相机用 `seed + 相机名偏移` 独立抽样，同一 `--seed` 可复现。
+仅扰动 **Translate xyz**（各轴 ±1 mm），**不修改任何旋转**（roll / pitch / yaw 均保持原版 USD 值）。yaml 里只改 `T_cam_imu` 的平移列；USD bake 时**只写 translate xformOp**，不碰 `orient` / `rotateXYZ`。
+
+| 量 | 默认半幅 | 说明 |
+|----|----------|------|
+| Translate X/Y/Z | ±1 mm | 均匀随机 |
+| 旋转 | 0 | 不扰动 |
 
 ```bash
 # 仅外参（内参保持原版）
@@ -262,7 +300,7 @@ cp assets/cameras/oak_camera_4lut_2H30YA.usd \
 #### 3.4 写入外参（bake 到 USD）
 
 工具：`tools/cameras/oak_bake_camera_extrinsics.py`  
-从 yaml 读取 4 路鱼眼的 `T_cam_imu`，写入各相机 prim 的 Translate / RotateXYZ。
+在**原版 USD 已有 translate** 上叠加 xyz 扰动（与步骤 ① 相同 `--seed`）。**只改 translate op，绝不写旋转 op**（避免矩阵→欧拉反解导致图像倾斜/倒立）。
 
 ```bash
 # extrinsics_change（仅外参；跳过 3.2 / 3.3）
@@ -355,7 +393,7 @@ cp assets/cameras/oak_camera_4lut_2H30YA.usd \
 | ② | `oak_generate_lut_textures.py` | `--yaml` / `--output_dir` |
 | ③ | `oak_bake_camera_intrinsics.py` | 内参、`maskRadius`、H30YA 分辨率 |
 | ③ | `oak_set_camera_lut_texture_paths.py` | LUT 相对路径 |
-| ③ | `oak_bake_camera_extrinsics.py` | yaml `T_cam_imu` → USD 位姿；`--perturb-pinholes` 覆盖 Front/Back |
+| ③ | `oak_bake_camera_extrinsics.py` | 仅改 translate xyz（`--seed`）；`--perturb-pinholes` 覆盖 Front/Back |
 | 辅助 | `oak_extrinsics_perturb.py` | 外参扰动核心逻辑（被上述脚本 import） |
 | 辅助 | `oak_compute_mask_radius.py` | 单独查看 mask 半径 |
 | 辅助 | `print_cameraRig.py` | 打印内外参与纹理路径 |
@@ -391,4 +429,4 @@ cp assets/cameras/oak_camera_4lut_2H30YA.usd \
 
 - 每套内参对应**独立** EXR 目录 + 独立 USD；LUT 路径由 `oak_set_camera_lut_texture_paths.py` 写入相对路径。
 - 仅内参扰动时，外参应与原版一致；仅外参扰动时，内参与 LUT 保持原版。
-- 外参与内参扰动均通过 `oak_generate_perturbed_yaml.py` 写入 yaml，再由 `oak_bake_camera_extrinsics.py` 烘焙进 USD；**同一套 `--seed` 保证可复现**。
+- 外参 yaml 记录扰动后 `T_cam_imu` 平移；USD bake 只改 translate op，旋转与原版完全一致。

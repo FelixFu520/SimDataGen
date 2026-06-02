@@ -1,5 +1,6 @@
 # ignore
 assets/cameras/oak_camera_4lut_2H30YA_perturbed_*.usd
+assets/cameras/perturbed_camera/
 docs/oak_camera_perturbed/
 .vscode/
 app

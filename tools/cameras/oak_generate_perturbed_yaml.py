@@ -7,8 +7,7 @@
   - fisheye_like   : 提高 xi、增强畸变，更接近 omni/鱼眼
   - extrinsics_change : 仅外参小幅随机扰动（内参不变）
 
-外参：--perturb-extrinsics 在相机坐标系施加可复现小随机波动（默认 ±3 mm / ±1.5°），
-写入各 cam* 的 T_cam_imu。可与任意内参 profile 组合。
+外参：--perturb-extrinsics 仅扰动 T_cam_imu 平移 xyz，默认 ±1 mm，不修改旋转。
 
 Usage:
     # 仅内参
@@ -44,10 +43,9 @@ if str(ROOT) not in sys.path:
 
 from tools.cameras.oak_extrinsics_perturb import (  # noqa: E402
     CAM_NAMES,
-    DEFAULT_ROT_RANGE_DEG,
     DEFAULT_TRANS_RANGE_M,
     matrix_to_yaml_nested,
-    perturb_T_cam_imu,
+    perturb_T_cam_imu_translate,
     rng_for_camera,
     t_cam_imu_to_isaac_sim_pose,
 )
@@ -84,7 +82,7 @@ PROFILE_COMMENTS = {
     "small_change": "Perturbed omni intrinsics (±2% generalization drift).",
     "pinhole_like": "Perturbed omni intrinsics biased toward pinhole.",
     "fisheye_like": "Perturbed omni intrinsics biased toward fisheye/omni.",
-    "extrinsics_change": "Omni intrinsics unchanged; T_cam_imu randomly perturbed (small amplitude).",
+    "extrinsics_change": "Omni intrinsics unchanged; T_cam_imu translation xyz perturbed only.",
 }
 
 
@@ -115,14 +113,11 @@ def apply_extrinsics_perturbation(
     seed: int,
     *,
     trans_range_m: float = DEFAULT_TRANS_RANGE_M,
-    rot_range_deg: float = DEFAULT_ROT_RANGE_DEG,
 ) -> dict:
     out = copy.deepcopy(cam)
     T = np.asarray(out["T_cam_imu"], dtype=np.float64)
     rng = rng_for_camera(seed, cam_name)
-    T_new = perturb_T_cam_imu(
-        T, rng, trans_range_m=trans_range_m, rot_range_deg=rot_range_deg
-    )
+    T_new = perturb_T_cam_imu_translate(T, rng, trans_range_m=trans_range_m)
     out["T_cam_imu"] = matrix_to_yaml_nested(T_new)
     return out
 
@@ -134,7 +129,6 @@ def generate(
     perturb_extrinsics: bool = False,
     seed: int = 0,
     trans_range_m: float = DEFAULT_TRANS_RANGE_M,
-    rot_range_deg: float = DEFAULT_ROT_RANGE_DEG,
 ) -> dict:
     with open(base_path, "r") as f:
         data = yaml.safe_load(f)
@@ -154,7 +148,6 @@ def generate(
                 cam_name,
                 seed,
                 trans_range_m=trans_range_m,
-                rot_range_deg=rot_range_deg,
             )
         data[cam_key] = cam
     return data
@@ -190,13 +183,7 @@ def main():
         "--trans-range-mm",
         type=float,
         default=DEFAULT_TRANS_RANGE_M * 1000.0,
-        help="外参平移扰动半幅 (mm)，默认 3",
-    )
-    parser.add_argument(
-        "--rot-range-deg",
-        type=float,
-        default=DEFAULT_ROT_RANGE_DEG,
-        help="外参旋转扰动半幅 (度)，默认 1.5",
+        help="平移 xyz 扰动半幅 (mm)，默认 1",
     )
     parser.add_argument(
         "--base",
@@ -220,7 +207,6 @@ def main():
         perturb_extrinsics=args.perturb_extrinsics,
         seed=args.seed,
         trans_range_m=trans_m,
-        rot_range_deg=args.rot_range_deg,
     )
 
     parts = [PROFILE_COMMENTS[args.profile]]
@@ -228,7 +214,7 @@ def main():
         parts.append("Extrinsics perturbed with same seed.")
     if args.profile == "extrinsics_change" or args.perturb_extrinsics:
         parts.append(
-            f"Extrinsics seed={args.seed}, trans±{args.trans_range_mm:g}mm, rot±{args.rot_range_deg:g}deg."
+            f"Extrinsics seed={args.seed}, xyz±{args.trans_range_mm:g}mm (rotation unchanged)."
         )
 
     header = (
