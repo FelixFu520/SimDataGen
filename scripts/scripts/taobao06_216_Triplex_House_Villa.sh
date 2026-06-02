@@ -71,6 +71,7 @@ ln -s ${PROJECT_DIR}/../5.1_asset /root/5.1_asset
 --/renderer/multiGpu/enabled=false
 
 # 可视化数据
+./app/python.sh -m pip install OpenEXR==3.4.9
 ./app/python.sh project_cloud.py \
 --data_dir $OUTPUT_DIR \
 --output_dir $OUTPUT_DIR/vis \
