@@ -1,4 +1,5 @@
 # ignore
+.vscode/
 app
 asset_extern
 asset_internal
