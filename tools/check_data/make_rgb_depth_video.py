@@ -24,6 +24,7 @@ import argparse
 import os
 import subprocess
 import sys
+import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import partial
@@ -60,6 +61,39 @@ _IMREAD_REDUCED_GRAY = {
     4: cv2.IMREAD_REDUCED_GRAYSCALE_4,
     8: cv2.IMREAD_REDUCED_GRAYSCALE_8,
 }
+
+
+def _fmt_duration(seconds: float) -> str:
+    seconds = float(seconds)
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    minutes, sec = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{int(minutes)}m{sec:.1f}s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{int(hours)}h{int(minutes)}m{sec:.1f}s"
+
+
+def _fmt_eta(elapsed: float, done: int, total: int) -> str:
+    if done <= 0 or done >= total:
+        return "0s"
+    return _fmt_duration(elapsed / done * (total - done))
+
+
+def _log_frame_progress(
+    task_name: str,
+    frame_idx: int,
+    total_frames: int,
+    frame_id: str,
+    task_start: float,
+) -> None:
+    elapsed = time.perf_counter() - task_start
+    eta = _fmt_eta(elapsed, frame_idx, total_frames)
+    print(
+        f"  [{task_name}] 帧 {frame_idx}/{total_frames} ({frame_id}), "
+        f"已用 {_fmt_duration(elapsed)}, 剩余 {eta}",
+        flush=True,
+    )
 
 
 @dataclass(frozen=True)
@@ -449,6 +483,7 @@ def _make_video_for_task(
         out_path, fps, size, size, preset=encode_preset, crf=encode_crf
     )
 
+    task_start = time.perf_counter()
     written = 0
     try:
         if frame_workers > 1:
@@ -476,9 +511,8 @@ def _make_video_for_task(
                         or frame_idx == total_frames
                         or frame_idx % progress_interval == 0
                     ):
-                        print(
-                            f"  [{task_dir.name}] 帧 {frame_idx}/{total_frames} ({frame_id})",
-                            flush=True,
+                        _log_frame_progress(
+                            task_dir.name, frame_idx, total_frames, frame_id, task_start
                         )
         else:
             square = np.zeros((size, size, 3), dtype=np.uint8)
@@ -504,19 +538,26 @@ def _make_video_for_task(
                     or frame_idx == total_frames
                     or frame_idx % progress_interval == 0
                 ):
-                    print(
-                        f"  [{task_dir.name}] 帧 {frame_idx}/{total_frames} ({frame_id})",
-                        flush=True,
+                    _log_frame_progress(
+                        task_dir.name, frame_idx, total_frames, frame_id, task_start
                     )
     finally:
         writer.release()
 
+    task_elapsed = time.perf_counter() - task_start
     if written == 0:
         out_path.unlink(missing_ok=True)
-        print(f"[跳过] ({task_idx}/{task_total}) {task_dir.name}: 无有效帧", file=sys.stderr)
+        print(
+            f"[跳过] ({task_idx}/{task_total}) {task_dir.name}: 无有效帧, "
+            f"用时 {_fmt_duration(task_elapsed)}",
+            file=sys.stderr,
+        )
         return None
 
-    print(f"[完成] ({task_idx}/{task_total}) {task_dir.name}: {written}/{total_frames} 帧 -> {out_path}")
+    print(
+        f"[完成] ({task_idx}/{task_total}) {task_dir.name}: {written}/{total_frames} 帧, "
+        f"用时 {_fmt_duration(task_elapsed)} -> {out_path}"
+    )
     return out_path
 
 
@@ -541,7 +582,7 @@ def _effective_frame_workers(total_frames: int, workers: int) -> int:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="将多相机 RGB/Depth 拼接并导出为 H.264 视频")
     parser.add_argument("--input", type=Path, required=True, help="任务根目录或单个任务目录")
-    parser.add_argument("--fps", type=float, default=2.0, help="视频帧率 (默认: 10)")
+    parser.add_argument("--fps", type=float, default=8.0, help="视频帧率 (默认: 10)")
     parser.add_argument(
         "--depth-source",
         choices=("png", "npy"),
@@ -599,6 +640,7 @@ def main() -> int:
     task_total = len(task_dirs)
     print(f"共 {task_total} 个文件夹待处理, 输入: {input_path}")
 
+    batch_start = time.perf_counter()
     ok = 0
     for task_idx, task_dir in enumerate(task_dirs, start=1):
         result = _make_video_for_task(
@@ -617,7 +659,19 @@ def main() -> int:
         if result is not None:
             ok += 1
 
-    print(f"\n全部完成: 共 {task_total} 个文件夹, 成功 {ok} 个")
+        batch_elapsed = time.perf_counter() - batch_start
+        batch_eta = _fmt_eta(batch_elapsed, task_idx, task_total)
+        print(
+            f"[总进度] 文件夹 {task_idx}/{task_total}, "
+            f"已用 {_fmt_duration(batch_elapsed)}, 预计剩余 {batch_eta}",
+            flush=True,
+        )
+
+    batch_elapsed = time.perf_counter() - batch_start
+    print(
+        f"\n全部完成: 共 {task_total} 个文件夹, 成功 {ok} 个, "
+        f"总用时 {_fmt_duration(batch_elapsed)}"
+    )
     return 0 if ok > 0 else 1
 
 
