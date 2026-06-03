@@ -16,6 +16,7 @@
 用法:
   ./app/python.sh tools/check_data/path_vis_to_mcap.py workdir/intime_home_000_100_1_30
   ./app/python.sh tools/check_data/path_vis_to_mcap.py workdir/intime_home_000_100_1_30 --downsample 20
+  ./app/python.sh tools/check_data/path_vis_to_mcap.py workdir/intime_home_000_100_1_30 --output output/mcaps
 
 Foxglove 3D 面板: 固定参考系选「world」; 点云 Color mode 选「RGBA (separate fields)」。
 """
@@ -257,7 +258,11 @@ def write_tf(writer: ProtobufWriter, stamp: datetime, frame_id: str, log_t: int)
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('workdir',help='数据根目录 (含 path/ 与 vis/),输出 <workdir>/<name>_path.mcap')
+    parser.add_argument('workdir', help='数据根目录 (含 path/ 与 vis/)')
+    parser.add_argument(
+        '--output', default=None,
+        help='MCAP 输出目录 (默认写入 workdir, 即 <workdir>/<name>_path.mcap)',
+    )
     parser.add_argument('--path-idx', type=int, default=None, help='只处理指定路径编号')
     parser.add_argument('--downsample', type=int, default=10, help='相机点云降采样步长')
     parser.add_argument('--max-points', type=int, default=1000000, help='相机点云/地图点数上限,0=不限')
@@ -299,7 +304,9 @@ def main() -> None:
         print("vis/ 下无 all_cameras_world_*_*.ply", file=sys.stderr)
         sys.exit(1)
 
-    out_path = os.path.join(workdir, f"{os.path.basename(workdir)}_path.mcap")
+    out_dir = os.path.abspath(args.output) if args.output else workdir
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, f"{os.path.basename(workdir)}_path.mcap")
     max_points = None if args.max_points <= 0 else args.max_points
     occ_max_points = None if args.occupancy_max_points <= 0 else args.occupancy_max_points
     base_time = datetime.now(timezone.utc)
