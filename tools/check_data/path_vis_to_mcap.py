@@ -3,7 +3,7 @@
 
 输入:
   - path/paths.npy: (num_paths, num_points, 3) 轨迹路点
-  - vis/all_cameras_world_{path:04d}_{point:04d}.ply: 各路径点世界系点云
+  - vis/{CAM}_{mei|pinhole}_world_{path:04d}_{point:04d}.ply: 各相机世界系点云 (运行时按 --cameras 合并)
   - occupancy/occupied_positions.npy: 占据栅格 (相机拍不到的静态场景)
 
 输出 topic (protobuf,Foxglove 可直接解析):
@@ -17,6 +17,8 @@
   ./app/python.sh tools/check_data/path_vis_to_mcap.py workdir/intime_home_000_100_1_30
   ./app/python.sh tools/check_data/path_vis_to_mcap.py workdir/intime_home_000_100_1_30 --downsample 20
   ./app/python.sh tools/check_data/path_vis_to_mcap.py workdir/intime_home_000_100_1_30 --output output/mcaps
+  ./app/python.sh tools/check_data/path_vis_to_mcap.py workdir/foo --cameras CAM_A CAM_B CAM_C CAM_D
+  ./app/python.sh tools/check_data/path_vis_to_mcap.py workdir/foo --ply-suffix mei_world
 
 每条轨迹单独输出一个 MCAP: <name>_path_0000.mcap, <name>_path_0001.mcap, ...
 
@@ -58,9 +60,11 @@ PACK_DTYPE = np.dtype([
 ])
 KEY_DTYPE = np.dtype([('x', '<f4'), ('y', '<f4'), ('z', '<f4')])
 
-PLY_PATTERN = re.compile(
-    r'^all_cameras_world_(?P<path>\d{4})_(?P<point>\d{4})\.ply$'
+PER_CAM_PLY_PATTERN = re.compile(
+    r'^(?P<cam>.+)_(?P<suffix>mei_world|pinhole_world)_(?P<path>\d{4})_(?P<point>\d{4})\.ply$'
 )
+PLY_SUFFIXES = ("mei_world", "pinhole_world")
+DEFAULT_CAMERAS = ("CAM_A", "CAM_B", "CAM_C", "CAM_D", "CAM_Front", "CAM_Back")
 
 POINT_STRIDE = PACK_DTYPE.itemsize
 DEFAULT_FRAME_ID = "world"
@@ -238,18 +242,80 @@ def load_occupied_scene(
     return cap_points(data, max_points), n_raw
 
 
-def discover_vis_frames(vis_dir: str) -> list[tuple[int, int, str]]:
-    entries: list[tuple[int, int, str]] = []
+def frame_stem(path_idx: int, point_idx: int) -> str:
+    return f"{path_idx:04d}_{point_idx:04d}"
+
+
+def resolve_per_cam_ply(
+    vis_dir: str,
+    cam: str,
+    path_idx: int,
+    point_idx: int,
+    *,
+    ply_suffix: str | None,
+) -> str | None:
+    stem = frame_stem(path_idx, point_idx)
+    suffixes = (ply_suffix,) if ply_suffix else PLY_SUFFIXES
+    for suffix in suffixes:
+        path = os.path.join(vis_dir, f"{cam}_{suffix}_{stem}.ply")
+        if os.path.isfile(path):
+            return path
+    return None
+
+
+def merge_camera_plys(
+    vis_dir: str,
+    path_idx: int,
+    point_idx: int,
+    cameras: tuple[str, ...],
+    *,
+    ply_suffix: str | None,
+) -> tuple[np.ndarray, list[str]]:
+    """按 --cameras 拼接各路相机点云,等价于 all_cameras_world 合并结果。"""
+    chunks: list[np.ndarray] = []
+    sources: list[str] = []
+    for cam in cameras:
+        ply_path = resolve_per_cam_ply(
+            vis_dir, cam, path_idx, point_idx, ply_suffix=ply_suffix,
+        )
+        if ply_path is None:
+            stem = frame_stem(path_idx, point_idx)
+            raise FileNotFoundError(
+                f"缺少 {cam}_*_{stem}.ply "
+                f"(vis_dir={vis_dir}, ply_suffix={ply_suffix or 'auto'})"
+            )
+        data, _ = read_ply_binary(ply_path, stride=1)
+        chunks.append(data)
+        sources.append(os.path.basename(ply_path))
+    return np.concatenate(chunks), sources
+
+
+def discover_vis_frames(
+    vis_dir: str,
+    cameras: tuple[str, ...],
+    *,
+    ply_suffix: str | None,
+) -> list[tuple[int, int]]:
+    """发现 vis/ 下指定相机均有点云的路径点 (path_idx, point_idx)。"""
+    cam_set = set(cameras)
+    candidates: set[tuple[int, int]] = set()
     for name in os.listdir(vis_dir):
-        m = PLY_PATTERN.match(name)
-        if not m:
+        m = PER_CAM_PLY_PATTERN.match(name)
+        if not m or m.group('cam') not in cam_set:
             continue
-        entries.append((
-            int(m.group('path')),
-            int(m.group('point')),
-            os.path.join(vis_dir, name),
-        ))
-    entries.sort(key=lambda x: (x[0], x[1]))
+        if ply_suffix is not None and m.group('suffix') != ply_suffix:
+            continue
+        candidates.add((int(m.group('path')), int(m.group('point'))))
+
+    entries: list[tuple[int, int]] = []
+    for path_idx, point_idx in sorted(candidates):
+        if all(
+            resolve_per_cam_ply(
+                vis_dir, cam, path_idx, point_idx, ply_suffix=ply_suffix,
+            )
+            for cam in cameras
+        ):
+            entries.append((path_idx, point_idx))
     return entries
 
 
@@ -266,8 +332,11 @@ def write_path_mcap(
     out_path: str,
     path_idx: int,
     path_xyz: np.ndarray,
-    path_frames: list[tuple[int, int, str]],
+    path_frames: list[tuple[int, int]],
     *,
+    vis_dir: str,
+    cameras: tuple[str, ...],
+    ply_suffix: str | None,
     occupied_npy: str,
     occupancy_downsample: int | None,
     downsample: int,
@@ -309,10 +378,11 @@ def write_path_mcap(
 
         print(f"path {path_idx:04d}: {len(path_xyz)} 路点, {len(path_frames)} 帧点云")
 
-        for frame_i, (_p, point_idx, ply_path) in enumerate(path_frames):
+        for frame_i, (_p, point_idx) in enumerate(path_frames):
+            stem = frame_stem(_p, point_idx)
             if point_idx >= len(path_xyz):
                 print(
-                    f"  [警告] {os.path.basename(ply_path)} 超出轨迹点数 "
+                    f"  [警告] {stem} 超出轨迹点数 "
                     f"({point_idx} >= {len(path_xyz)})",
                     file=sys.stderr,
                 )
@@ -323,9 +393,24 @@ def write_path_mcap(
             )
             log_t = int(stamp.timestamp() * 1e9)
 
-            print(f"  [{frame_i + 1}/{len(path_frames)}] 读取 {os.path.basename(ply_path)} ...")
-            data, n_raw = read_ply_binary(ply_path, stride=downsample)
-            data = cap_points(data, max_points)
+            print(
+                f"  [{frame_i + 1}/{len(path_frames)}] 合并 {stem} "
+                f"({', '.join(cameras)}) ..."
+            )
+            try:
+                merged, sources = merge_camera_plys(
+                    vis_dir, _p, point_idx, cameras, ply_suffix=ply_suffix,
+                )
+            except FileNotFoundError as exc:
+                print(f"  [跳过] {exc}", file=sys.stderr)
+                continue
+            n_raw = len(merged)
+            if downsample > 1:
+                merged = np.asarray(merged[::downsample])
+            data = cap_points(merged, max_points)
+            print(
+                f"    {' + '.join(sources)}"
+            )
             print(
                 f"    点数 {n_raw:,} -> {len(data):,} "
                 f"(downsample={downsample}, max_points={max_points})"
@@ -391,6 +476,15 @@ def main() -> None:
         help='写入 /sim/map (拼接去重,显著增大文件并变慢,默认关闭)',
     )
     parser.add_argument('--frame-id', default=DEFAULT_FRAME_ID, help=f'坐标系名称 (默认 {DEFAULT_FRAME_ID})')
+    parser.add_argument(
+        '--cameras', nargs='+', default=list(DEFAULT_CAMERAS),
+        metavar='CAM',
+        help='参与合并的相机名 (默认六路: CAM_A/B/C/D/Front/Back)',
+    )
+    parser.add_argument(
+        '--ply-suffix', choices=PLY_SUFFIXES, default=None,
+        help='单相机 PLY 后缀 (默认按 mei_world / pinhole_world 自动选择)',
+    )
     args = parser.parse_args()
 
     workdir = os.path.abspath(args.workdir)
@@ -410,10 +504,18 @@ def main() -> None:
         print(f"paths.npy 形状异常: {paths_arr.shape}", file=sys.stderr)
         sys.exit(1)
 
-    vis_frames = discover_vis_frames(vis_dir)
+    cameras = tuple(args.cameras)
+    vis_frames = discover_vis_frames(vis_dir, cameras, ply_suffix=args.ply_suffix)
     if not vis_frames:
-        print("vis/ 下无 all_cameras_world_*_*.ply", file=sys.stderr)
+        cam_list = ', '.join(cameras)
+        suffix_hint = args.ply_suffix or 'mei_world|pinhole_world'
+        print(
+            f"vis/ 下无完整帧点云 ({cam_list}, 后缀 {suffix_hint}, "
+            f"命名如 CAM_A_<suffix>_0000_0001.ply)",
+            file=sys.stderr,
+        )
         sys.exit(1)
+    print(f"点云来源: 合并 {', '.join(cameras)} (不使用 all_cameras_world_*.ply)")
 
     out_dir = os.path.abspath(args.output) if args.output else workdir
     os.makedirs(out_dir, exist_ok=True)
@@ -443,7 +545,7 @@ def main() -> None:
             continue
 
         path_xyz = paths_arr[path_idx]
-        path_frames = [(p, pt, fp) for p, pt, fp in vis_frames if p == path_idx]
+        path_frames = [(p, pt) for p, pt in vis_frames if p == path_idx]
         if not path_frames:
             print(f"[跳过] path {path_idx:04d}: vis 无对应点云", file=sys.stderr)
             continue
@@ -458,6 +560,9 @@ def main() -> None:
             path_idx,
             path_xyz,
             path_frames,
+            vis_dir=vis_dir,
+            cameras=cameras,
+            ply_suffix=args.ply_suffix,
             occupied_npy=occupied_npy,
             occupancy_downsample=args.occupancy_downsample,
             downsample=args.downsample,
