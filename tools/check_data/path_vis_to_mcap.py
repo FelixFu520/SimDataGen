@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
-"""按轨迹将 vis/ 点云写入 MCAP,供 Foxglove 播放。
+"""按 vis 帧将点云写入 MCAP,供 Foxglove 播放。
 
 输入:
   - path/paths.npy: (num_paths, num_points, 3) 轨迹路点
   - vis/{CAM}_{lut|mei|pinhole}_world_{path:04d}_{point:04d}.ply: 各相机世界系点云 (运行时按 --cameras 合并)
   - occupancy/occupied_positions.npy: 占据栅格 (相机拍不到的静态场景)
 
+输出目录 (默认): <workdir>/mcap/
+  每帧一个 MCAP: <name>_path_{path:04d}_pt_{point:04d}.mcap
+  全局时间戳按帧序递增 (1/fps 间隔), 便于 Foxglove 同时打开多个文件连续播放。
+
 输出 topic (protobuf,Foxglove 可直接解析):
   - /tf: 静态坐标系 foxglove.FrameTransform
-  - /sim/occupancy: 占据场景点云 (灰白色,默认全量 ~28 万点)
-  - /sim/pointcloud: 每帧 foxglove.PointCloud
-  - /sim/path: 轨迹 foxglove.PosesInFrame
-  - /sim/map (仅 --accumulate): 拼接全局点云,体积大、生成慢,默认不写
+  - /sim/occupancy: 占据场景点云 (每帧 MCAP 均写入,时间戳与当帧一致,灰白色)
+  - /sim/pointcloud: 当前帧 foxglove.PointCloud
+  - /sim/path: 对应轨迹 foxglove.PosesInFrame
+  - /sim/map (仅 --accumulate): 额外写入 <name>_map.mcap
 
 用法:
   ./app/python.sh tools/check_data/path_vis_to_mcap.py workdir/intime_home_000_100_1_30
@@ -20,9 +24,7 @@
   ./app/python.sh tools/check_data/path_vis_to_mcap.py workdir/foo --cameras CAM_A CAM_B CAM_C CAM_D
   ./app/python.sh tools/check_data/path_vis_to_mcap.py workdir/foo --ply-suffix mei_world
 
-每条轨迹单独输出一个 MCAP: <name>_path_0000.mcap, <name>_path_0001.mcap, ...
-
-Foxglove 3D 面板: 固定参考系选「world」; 点云 Color mode 选「RGBA (separate fields)」。
+Foxglove: 打开 mcap/ 下全部文件; 固定参考系选「world」; 点云 Color mode 选「RGBA (separate fields)」。
 """
 
 from __future__ import annotations
@@ -324,132 +326,109 @@ def write_tf(writer: ProtobufWriter, stamp: datetime, frame_id: str, log_t: int)
     writer.write_message("/tf", tf, log_time=log_t, publish_time=log_t)
 
 
-def mcap_output_path(out_dir: str, workdir_name: str, path_idx: int) -> str:
-    return os.path.join(out_dir, f"{workdir_name}_path_{path_idx:04d}.mcap")
+def mcap_output_dir(workdir: str, output: str | None) -> str:
+    if output is not None:
+        return os.path.abspath(output)
+    return os.path.join(workdir, 'mcap')
 
 
-def write_path_mcap(
+def mcap_frame_output_path(
+    out_dir: str, workdir_name: str, path_idx: int, point_idx: int,
+) -> str:
+    return os.path.join(
+        out_dir, f"{workdir_name}_path_{path_idx:04d}_pt_{point_idx:04d}.mcap",
+    )
+
+
+def frame_stamp(base_time: datetime, global_frame_i: int, fps: float) -> datetime:
+    return datetime.fromtimestamp(
+        base_time.timestamp() + global_frame_i / max(fps, 1e-6),
+        tz=timezone.utc,
+    )
+
+
+def write_frame_mcap(
     out_path: str,
     path_idx: int,
+    point_idx: int,
     path_xyz: np.ndarray,
-    path_frames: list[tuple[int, int]],
     *,
     vis_dir: str,
     cameras: tuple[str, ...],
     ply_suffix: str | None,
-    occupied_npy: str,
-    occupancy_downsample: int | None,
+    occ_data: np.ndarray | None,
     downsample: int,
-    occ_max_points: int | None,
     max_points: int | None,
-    fps: float,
-    accumulate: bool,
+    stamp: datetime,
     frame_id: str,
-    base_time: datetime,
-) -> tuple[int, float]:
-    """将单条轨迹及其 vis 点云写入一个 MCAP, 返回 (帧数, 文件 MB)。"""
-    accumulate_chunks: list[np.ndarray] = []
-    written_frames = 0
+) -> np.ndarray | None:
+    """将单帧 vis 点云写入一个 MCAP; 成功返回点云数组供 accumulate 复用。"""
+    stem = frame_stem(path_idx, point_idx)
+    if point_idx >= len(path_xyz):
+        print(
+            f"  [警告] {stem} 超出轨迹点数 ({point_idx} >= {len(path_xyz)})",
+            file=sys.stderr,
+        )
 
+    try:
+        merged, sources = merge_camera_plys(
+            vis_dir, path_idx, point_idx, cameras, ply_suffix=ply_suffix,
+        )
+    except FileNotFoundError as exc:
+        print(f"  [跳过] {exc}", file=sys.stderr)
+        return None
+
+    n_raw = len(merged)
+    if downsample > 1:
+        merged = np.asarray(merged[::downsample])
+    data = cap_points(merged, max_points)
+    print(f"    {' + '.join(sources)}")
+    print(
+        f"    点数 {n_raw:,} -> {len(data):,} "
+        f"(downsample={downsample}, max_points={max_points})"
+    )
+
+    log_t = int(stamp.timestamp() * 1e9)
     with ProtobufWriter(out_path) as writer:
-        stamp0 = base_time
-        log_t0 = int(stamp0.timestamp() * 1e9)
-        write_tf(writer, stamp0, frame_id, log_t0)
-
-        if os.path.isfile(occupied_npy):
-            if occupancy_downsample is not None:
-                occ_stride = max(1, occupancy_downsample)
-            else:
-                occ_stride = downsample
-            occ_data, occ_n_raw = load_occupied_scene(
-                occupied_npy, occ_stride, occ_max_points,
-            )
-            occ_msg = make_pointcloud_proto(occ_data, stamp0, frame_id)
+        write_tf(writer, stamp, frame_id, log_t)
+        if occ_data is not None:
+            occ_msg = make_pointcloud_proto(occ_data, stamp, frame_id)
             writer.write_message(
-                "/sim/occupancy", occ_msg, log_time=log_t0, publish_time=log_t0,
+                "/sim/occupancy", occ_msg, log_time=log_t, publish_time=log_t,
             )
-            print(
-                f"  占据点云 {occ_n_raw:,} -> {len(occ_data):,} "
-                f"(灰 RGB{OCCUPANCY_GRAY_RGB}, downsample={occ_stride})"
-            )
+        path_msg = make_poses_in_frame_proto(path_xyz, stamp, frame_id)
+        writer.write_message("/sim/path", path_msg, log_time=log_t, publish_time=log_t)
+        pc_msg = make_pointcloud_proto(data, stamp, frame_id)
+        writer.write_message(
+            "/sim/pointcloud", pc_msg, log_time=log_t, publish_time=log_t,
+        )
+    return data
 
-        path_msg = make_poses_in_frame_proto(path_xyz, stamp0, frame_id)
-        writer.write_message("/sim/path", path_msg, log_time=log_t0, publish_time=log_t0)
 
-        print(f"path {path_idx:04d}: {len(path_xyz)} 路点, {len(path_frames)} 帧点云")
+def write_map_mcap(
+    out_path: str,
+    chunks: list[np.ndarray],
+    *,
+    stamp: datetime,
+    frame_id: str,
+    max_points: int | None,
+) -> None:
+    print(f"\n拼接 {len(chunks)} 帧点云并去重 -> {out_path} ...")
+    merged = np.concatenate(chunks)
+    n_before = len(merged)
+    merged = dedup_xyz(merged)
+    print(f"  去重 {n_before:,} -> {len(merged):,}")
+    if max_points is not None and len(merged) > max_points:
+        merged = cap_points(merged, max_points)
+        print(f"  地图点云裁剪至 {len(merged):,}")
 
-        for frame_i, (_p, point_idx) in enumerate(path_frames):
-            stem = frame_stem(_p, point_idx)
-            if point_idx >= len(path_xyz):
-                print(
-                    f"  [警告] {stem} 超出轨迹点数 "
-                    f"({point_idx} >= {len(path_xyz)})",
-                    file=sys.stderr,
-                )
-
-            stamp = datetime.fromtimestamp(
-                stamp0.timestamp() + frame_i / max(fps, 1e-6),
-                tz=timezone.utc,
-            )
-            log_t = int(stamp.timestamp() * 1e9)
-
-            print(
-                f"  [{frame_i + 1}/{len(path_frames)}] 合并 {stem} "
-                f"({', '.join(cameras)}) ..."
-            )
-            try:
-                merged, sources = merge_camera_plys(
-                    vis_dir, _p, point_idx, cameras, ply_suffix=ply_suffix,
-                )
-            except FileNotFoundError as exc:
-                print(f"  [跳过] {exc}", file=sys.stderr)
-                continue
-            n_raw = len(merged)
-            if downsample > 1:
-                merged = np.asarray(merged[::downsample])
-            data = cap_points(merged, max_points)
-            print(
-                f"    {' + '.join(sources)}"
-            )
-            print(
-                f"    点数 {n_raw:,} -> {len(data):,} "
-                f"(downsample={downsample}, max_points={max_points})"
-            )
-
-            if accumulate:
-                accumulate_chunks.append(data)
-
-            write_tf(writer, stamp, frame_id, log_t)
-            pc_msg = make_pointcloud_proto(data, stamp, frame_id)
-            writer.write_message(
-                "/sim/pointcloud", pc_msg, log_time=log_t, publish_time=log_t,
-            )
-            written_frames += 1
-
-        if accumulate and accumulate_chunks:
-            print(f"\n拼接 {len(accumulate_chunks)} 帧点云并去重 ...")
-            merged = np.concatenate(accumulate_chunks)
-            del accumulate_chunks
-            n_before = len(merged)
-            merged = dedup_xyz(merged)
-            print(f"  去重 {n_before:,} -> {len(merged):,}")
-            if max_points is not None and len(merged) > max_points:
-                merged = cap_points(merged, max_points)
-                print(f"  地图点云裁剪至 {len(merged):,}")
-
-            map_stamp = datetime.fromtimestamp(
-                base_time.timestamp() + written_frames / max(fps, 1e-6),
-                tz=timezone.utc,
-            )
-            map_log_t = int(map_stamp.timestamp() * 1e9)
-            write_tf(writer, map_stamp, frame_id, map_log_t)
-            map_msg = make_pointcloud_proto(merged, map_stamp, frame_id)
-            writer.write_message(
-                "/sim/map", map_msg, log_time=map_log_t, publish_time=map_log_t,
-            )
-
-    size_mb = os.path.getsize(out_path) / (1024 * 1024)
-    return written_frames, size_mb
+    log_t = int(stamp.timestamp() * 1e9)
+    with ProtobufWriter(out_path) as writer:
+        write_tf(writer, stamp, frame_id, log_t)
+        map_msg = make_pointcloud_proto(merged, stamp, frame_id)
+        writer.write_message(
+            "/sim/map", map_msg, log_time=log_t, publish_time=log_t,
+        )
 
 
 def main() -> None:
@@ -457,11 +436,11 @@ def main() -> None:
     parser.add_argument('workdir', help='数据根目录 (含 path/ 与 vis/)')
     parser.add_argument(
         '--output', default=None,
-        help='MCAP 输出目录 (默认写入 workdir, 即 <name>_path_0000.mcap 等)',
+        help='MCAP 输出目录 (默认 <workdir>/mcap/)',
     )
     parser.add_argument('--path-idx', type=int, default=None, help='只处理指定路径编号')
     parser.add_argument('--downsample', type=int, default=10, help='相机点云降采样步长')
-    parser.add_argument('--max-points', type=int, default=1000000, help='相机点云/地图点数上限,0=不限')
+    parser.add_argument('--max-points', type=int, default=4000000, help='相机点云/地图点数上限,0=不限')
     parser.add_argument(
         '--occupancy-downsample', type=int, default=1,
         help='占据场景降采样步长 (1=全量,比相机点云更密, None使用downsample)',
@@ -473,7 +452,7 @@ def main() -> None:
     parser.add_argument('--fps', type=float, default=6.0, help='时间轴帧率 Hz')
     parser.add_argument(
         '--accumulate', action='store_true',
-        help='写入 /sim/map (拼接去重,显著增大文件并变慢,默认关闭)',
+        help='额外写入 <name>_map.mcap (拼接去重全局点云,默认关闭)',
     )
     parser.add_argument('--frame-id', default=DEFAULT_FRAME_ID, help=f'坐标系名称 (默认 {DEFAULT_FRAME_ID})')
     parser.add_argument(
@@ -517,7 +496,7 @@ def main() -> None:
         sys.exit(1)
     print(f"点云来源: 合并 {', '.join(cameras)} (不使用 all_cameras_world_*.ply)")
 
-    out_dir = os.path.abspath(args.output) if args.output else workdir
+    out_dir = mcap_output_dir(workdir, args.output)
     os.makedirs(out_dir, exist_ok=True)
     workdir_name = os.path.basename(workdir)
     max_points = None if args.max_points <= 0 else args.max_points
@@ -530,63 +509,100 @@ def main() -> None:
         if args.path_idx is not None
         else list(range(paths_arr.shape[0]))
     )
+    path_idx_set = {
+        i for i in path_indices if 0 <= i < paths_arr.shape[0]
+    }
+    for i in path_indices:
+        if i not in path_idx_set:
+            print(f"[跳过] 无效 path_idx={i}", file=sys.stderr)
 
-    t0 = time.time()
-    total_frames = 0
-    written_mcaps: list[tuple[str, int, float]] = []
+    all_frames = [(p, pt) for p, pt in vis_frames if p in path_idx_set]
+    if not all_frames:
+        print("\n未找到可处理的 vis 帧", file=sys.stderr)
+        sys.exit(1)
 
     occupied_npy = os.path.join(workdir, 'occupancy', OCCUPANCY_NPY)
-    if not os.path.isfile(occupied_npy):
+    occ_data: np.ndarray | None = None
+    if os.path.isfile(occupied_npy):
+        if args.occupancy_downsample is not None:
+            occ_stride = max(1, args.occupancy_downsample)
+        else:
+            occ_stride = max(1, args.downsample)
+        print(f"加载占据场景: {occupied_npy} ...")
+        occ_data, occ_n_raw = load_occupied_scene(
+            occupied_npy, occ_stride, occ_max_points,
+        )
+        print(
+            f"  占据点云 {occ_n_raw:,} -> {len(occ_data):,} "
+            f"(灰 RGB{OCCUPANCY_GRAY_RGB}, downsample={occ_stride}, 每帧 MCAP 各写一份)"
+        )
+    else:
         print(f"[跳过] 未找到占据栅格: {occupied_npy}", file=sys.stderr)
 
-    for path_idx in path_indices:
-        if path_idx < 0 or path_idx >= paths_arr.shape[0]:
-            print(f"[跳过] 无效 path_idx={path_idx}", file=sys.stderr)
-            continue
+    print(f"输出目录: {out_dir}")
+    print(f"共 {len(all_frames)} 帧, 时间轴 {args.fps} Hz (Foxglove 可同时打开全部 MCAP)")
+
+    t0 = time.time()
+    written_count = 0
+    total_bytes = 0
+    accumulate_chunks: list[np.ndarray] = []
+
+    for global_i, (path_idx, point_idx) in enumerate(all_frames):
+        stamp = frame_stamp(base_time, global_i, args.fps)
+        stem = frame_stem(path_idx, point_idx)
+        out_path = mcap_frame_output_path(out_dir, workdir_name, path_idx, point_idx)
+        print(
+            f"\n[{global_i + 1}/{len(all_frames)}] {stem} "
+            f"t={stamp.isoformat()} -> {os.path.basename(out_path)}"
+        )
+        print(f"  合并 ({', '.join(cameras)}) ...")
 
         path_xyz = paths_arr[path_idx]
-        path_frames = [(p, pt) for p, pt in vis_frames if p == path_idx]
-        if not path_frames:
-            print(f"[跳过] path {path_idx:04d}: vis 无对应点云", file=sys.stderr)
-            continue
-
-        out_path = mcap_output_path(out_dir, workdir_name, path_idx)
-        print(f"\n写入 {out_path} ...")
-        if os.path.isfile(occupied_npy):
-            print(f"加载占据场景: {occupied_npy} ...")
-
-        frames, size_mb = write_path_mcap(
+        frame_data = write_frame_mcap(
             out_path,
             path_idx,
+            point_idx,
             path_xyz,
-            path_frames,
             vis_dir=vis_dir,
             cameras=cameras,
             ply_suffix=args.ply_suffix,
-            occupied_npy=occupied_npy,
-            occupancy_downsample=args.occupancy_downsample,
+            occ_data=occ_data,
             downsample=args.downsample,
-            occ_max_points=occ_max_points,
             max_points=max_points,
-            fps=args.fps,
-            accumulate=args.accumulate,
+            stamp=stamp,
             frame_id=frame_id,
-            base_time=base_time,
         )
-        total_frames += frames
-        written_mcaps.append((out_path, frames, size_mb))
-        print(f"  -> {frames} 帧, {size_mb:.1f} MB")
+        if frame_data is None:
+            continue
+        written_count += 1
+        total_bytes += os.path.getsize(out_path)
+        size_mb = os.path.getsize(out_path) / (1024 * 1024)
+        print(f"  -> {size_mb:.2f} MB")
+
+        if args.accumulate:
+            accumulate_chunks.append(frame_data)
 
     elapsed = time.time() - t0
-    if not written_mcaps:
+    if written_count == 0:
         print("\n未生成任何 MCAP", file=sys.stderr)
         sys.exit(1)
 
-    print(f"\n完成: {len(written_mcaps)} 个 MCAP, 共 {total_frames} 帧点云 ({elapsed:.1f}s)")
-    for out_path, frames, size_mb in written_mcaps:
-        print(f"  {out_path} ({frames} 帧, {size_mb:.1f} MB)")
+    if args.accumulate and accumulate_chunks:
+        map_stamp = frame_stamp(base_time, len(all_frames), args.fps)
+        map_path = os.path.join(out_dir, f"{workdir_name}_map.mcap")
+        write_map_mcap(
+            map_path, accumulate_chunks,
+            stamp=map_stamp, frame_id=frame_id, max_points=max_points,
+        )
+        total_bytes += os.path.getsize(map_path)
+
+    total_mb = total_bytes / (1024 * 1024)
     print(
-        f"Foxglove: 固定参考系={frame_id}; "
+        f"\n完成: {written_count} 个帧 MCAP -> {out_dir} "
+        f"({total_mb:.1f} MB, {elapsed:.1f}s)"
+    )
+    print(
+        f"Foxglove: 打开 {out_dir} 下全部 *.mcap; 固定参考系={frame_id}; "
         "点云 Color mode 选「RGBA (separate fields)」; "
         "订阅 /sim/occupancy(灰场景) + /sim/pointcloud(彩色观测)。"
     )
