@@ -13,8 +13,10 @@
   python tools/check_data/make_rgb_depth_video.py --input workdir02
   python tools/check_data/make_rgb_depth_video.py --input workdir02/intime_home_000_100_1_30
   python tools/check_data/make_rgb_depth_video.py --input workdir02 --workers 4
+  python tools/check_data/make_rgb_depth_video.py --input workdir02 --output videos
 
-输出: 每个任务文件夹内生成 {文件夹名}.mp4
+输出: 默认每个任务文件夹内生成 {文件夹名}.mp4;
+      指定 --output 时全部保存到输出目录, 输入目录不再写入。
 依赖: opencv-python-headless, imageio-ffmpeg
 """
 
@@ -450,6 +452,7 @@ def _make_video_for_task(
     size: int,
     progress_interval: int,
     *,
+    output_dir: Path | None,
     workers: int,
     load_workers: int,
     encode_preset: str,
@@ -478,7 +481,10 @@ def _make_video_for_task(
         f"frame_workers={frame_workers}, load_workers={load_workers})"
     )
 
-    out_path = task_dir / f"{task_dir.name}.mp4"
+    if output_dir is not None:
+        out_path = output_dir / f"{task_dir.name}.mp4"
+    else:
+        out_path = task_dir / f"{task_dir.name}.mp4"
     writer = H264VideoWriter(
         out_path, fps, size, size, preset=encode_preset, crf=encode_crf
     )
@@ -582,7 +588,13 @@ def _effective_frame_workers(total_frames: int, workers: int) -> int:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="将多相机 RGB/Depth 拼接并导出为 H.264 视频")
     parser.add_argument("--input", type=Path, required=True, help="任务根目录或单个任务目录")
-    parser.add_argument("--fps", type=float, default=8.0, help="视频帧率 (默认: 10)")
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="视频输出目录; 指定后所有 mp4 保存到此目录, 不再写入输入目录",
+    )
+    parser.add_argument("--fps", type=float, default=6.0, help="视频帧率 (默认: 6)")
     parser.add_argument(
         "--depth-source",
         choices=("png", "npy"),
@@ -637,8 +649,14 @@ def main() -> int:
         print(f"未找到任务目录: {input_path}", file=sys.stderr)
         return 1
 
+    output_dir: Path | None = None
+    if args.output is not None:
+        output_dir = args.output.resolve()
+        output_dir.mkdir(parents=True, exist_ok=True)
+
     task_total = len(task_dirs)
-    print(f"共 {task_total} 个文件夹待处理, 输入: {input_path}")
+    out_msg = f", 输出: {output_dir}" if output_dir is not None else ""
+    print(f"共 {task_total} 个文件夹待处理, 输入: {input_path}{out_msg}")
 
     batch_start = time.perf_counter()
     ok = 0
@@ -651,6 +669,7 @@ def main() -> int:
             args.depth_source,
             args.size,
             max(1, args.progress_interval),
+            output_dir=output_dir,
             workers=max(1, args.workers),
             load_workers=max(1, args.load_workers),
             encode_preset=args.encode_preset,
