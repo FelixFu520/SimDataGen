@@ -3,7 +3,7 @@
 
 输入:
   - path/paths.npy: (num_paths, num_points, 3) 轨迹路点
-  - vis/{CAM}_{mei|pinhole}_world_{path:04d}_{point:04d}.ply: 各相机世界系点云 (运行时按 --cameras 合并)
+  - vis/{CAM}_{lut|mei|pinhole}_world_{path:04d}_{point:04d}.ply: 各相机世界系点云 (运行时按 --cameras 合并)
   - occupancy/occupied_positions.npy: 占据栅格 (相机拍不到的静态场景)
 
 输出 topic (protobuf,Foxglove 可直接解析):
@@ -61,9 +61,9 @@ PACK_DTYPE = np.dtype([
 KEY_DTYPE = np.dtype([('x', '<f4'), ('y', '<f4'), ('z', '<f4')])
 
 PER_CAM_PLY_PATTERN = re.compile(
-    r'^(?P<cam>.+)_(?P<suffix>mei_world|pinhole_world)_(?P<path>\d{4})_(?P<point>\d{4})\.ply$'
+    r'^(?P<cam>.+)_(?P<suffix>lut_world|mei_world|pinhole_world)_(?P<path>\d{4})_(?P<point>\d{4})\.ply$'
 )
-PLY_SUFFIXES = ("mei_world", "pinhole_world")
+PLY_SUFFIXES = ("lut_world", "mei_world", "pinhole_world")
 DEFAULT_CAMERAS = ("CAM_A", "CAM_B", "CAM_C", "CAM_D", "CAM_Front", "CAM_Back")
 
 POINT_STRIDE = PACK_DTYPE.itemsize
@@ -483,7 +483,7 @@ def main() -> None:
     )
     parser.add_argument(
         '--ply-suffix', choices=PLY_SUFFIXES, default=None,
-        help='单相机 PLY 后缀 (默认按 mei_world / pinhole_world 自动选择)',
+        help='单相机 PLY 后缀 (默认按 lut_world / mei_world / pinhole_world 自动选择)',
     )
     args = parser.parse_args()
 
@@ -508,7 +508,7 @@ def main() -> None:
     vis_frames = discover_vis_frames(vis_dir, cameras, ply_suffix=args.ply_suffix)
     if not vis_frames:
         cam_list = ', '.join(cameras)
-        suffix_hint = args.ply_suffix or 'mei_world|pinhole_world'
+        suffix_hint = args.ply_suffix or 'lut_world|mei_world|pinhole_world'
         print(
             f"vis/ 下无完整帧点云 ({cam_list}, 后缀 {suffix_hint}, "
             f"命名如 CAM_A_<suffix>_0000_0001.ply)",

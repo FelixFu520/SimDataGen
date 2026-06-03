@@ -41,7 +41,7 @@ usage() {
                             project_cloud.py RadTan 去畸变迭代次数 (默认 20)
   --mcap-downsample N       path_vis_to_mcap.py 点云降采样 (默认 10)
   --cameras CAM [CAM ...]   投影与 MCAP 使用的相机 (默认六路 CAM_A..D + Front/Back)
-  --ply-suffix SUFFIX       单相机 PLY 后缀: mei_world 或 pinhole_world (默认自动)
+  --ply-suffix SUFFIX       单相机 PLY 后缀: lut_world / mei_world / pinhole_world (默认自动)
   --skip-project            跳过点云投影, 仅生成 MCAP
   --skip-mcap               仅做点云投影, 不生成 MCAP
   --install-deps            安装 OpenEXR / mcap 依赖 (默认不安装)
@@ -199,7 +199,8 @@ per_cam_ply_exists() {
     [[ -f "${vis_dir}/${cam}_${PLY_SUFFIX}_${frame_id}.ply" ]]
     return
   fi
-  [[ -f "${vis_dir}/${cam}_mei_world_${frame_id}.ply" ]] ||
+  [[ -f "${vis_dir}/${cam}_lut_world_${frame_id}.ply" ]] ||
+    [[ -f "${vis_dir}/${cam}_mei_world_${frame_id}.ply" ]] ||
     [[ -f "${vis_dir}/${cam}_pinhole_world_${frame_id}.ply" ]]
 }
 
