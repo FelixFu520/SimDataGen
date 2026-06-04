@@ -89,7 +89,7 @@ class CameraRigTrajectoryRecorder(Node):
         init_pose: List[float],
         follow_viewport: bool = True,
         viewport_camera: str = "CAM_Front",
-        viewport_camera_2: Optional[str] = None,
+        viewport_cameras_extra: Optional[List[str]] = None,
     ):
         super().__init__("camera_rig_trajectory_recorder")
         self.get_logger().set_level(rclpy.logging.LoggingSeverity.WARN)
@@ -106,7 +106,7 @@ class CameraRigTrajectoryRecorder(Node):
         self.path_index = 0
         self.follow_viewport = bool(follow_viewport)
         self.viewport_camera = (viewport_camera or "CAM_A").strip()
-        self.viewport_camera_2 = (viewport_camera_2 or "").strip() or None
+        self.viewport_cameras_extra = list(viewport_cameras_extra or [])
 
         self.create_subscription(Float64MultiArray, "/camera_rig/nudge", self._on_nudge, 10)
         self.create_subscription(String, "/camera_rig/record", self._on_record, 10)
@@ -170,39 +170,50 @@ class CameraRigTrajectoryRecorder(Node):
         except Exception:
             pass
 
-    def _create_secondary_viewport(self, camera_name: str) -> Optional[str]:
-        """再开一个 Viewport 窗口并绑定 rig 上的第二路相机（如 CAM_Back）。"""
+    def _create_secondary_viewport(self, camera_name: str, index: int = 0) -> Optional[str]:
+        """再开一个 Viewport 窗口并绑定 rig 上的相机。"""
         cam_path = self._resolve_rig_camera_path(camera_name)
         if cam_path is None:
             avail = ", ".join(self.camera_rig.cameras_name)
             logger.warning(
-                f"第二视口：未找到相机 '{camera_name}'，可用: {avail}"
+                f"额外视口：未找到相机 '{camera_name}'，可用: {avail}"
             )
             return None
+        vp_w, vp_h = 520, 390
+        cols = 3
+        row, col = divmod(index, cols)
         try:
             from omni.kit.viewport.utility import create_viewport_window
 
             window = create_viewport_window(
                 name=f"Viewport {camera_name}",
-                width=640,
-                height=480,
-                position_x=80,
-                position_y=80,
+                width=vp_w,
+                height=vp_h,
+                position_x=40 + col * (vp_w + 16),
+                position_y=40 + row * (vp_h + 40),
                 camera_path=cam_path,
             )
             if window is not None:
                 self._set_viewport_camera_on_api(window.viewport_api, cam_path)
                 return cam_path
         except Exception as exc:
-            logger.warning(f"创建第二视口失败 ({camera_name}): {exc}")
+            logger.warning(f"创建视口失败 ({camera_name}): {exc}")
         return None
 
-    def _setup_viewports(self) -> tuple[str, Optional[str]]:
+    def _setup_viewports(self) -> tuple[str, List[str]]:
         primary = self._set_viewport_camera()
-        secondary = None
-        if self.viewport_camera_2:
-            secondary = self._create_secondary_viewport(self.viewport_camera_2)
-        return primary, secondary
+        extra_paths: List[str] = []
+        seen = {self.viewport_camera.lower()}
+        for i, name in enumerate(self.viewport_cameras_extra):
+            key = name.strip()
+            if not key or key.lower() in seen:
+                continue
+            seen.add(key.lower())
+            path = self._create_secondary_viewport(key, index=i)
+            if path:
+                extra_paths.append(path)
+                simulation_app.update()
+        return primary, extra_paths
 
     @staticmethod
     def _normalize_xy(vec: np.ndarray) -> np.ndarray:
@@ -402,10 +413,13 @@ class CameraRigTrajectoryRecorder(Node):
         for _ in range(3):
             self.world.step(render=True)
             simulation_app.update()
-        vp_cam, vp_cam_2 = self._setup_viewports()
+        vp_cam, vp_extra = self._setup_viewports()
         self._follow_viewport_now()
         self._refresh_sim_view(n_frames=8)
-        vp_info = vp_cam if vp_cam_2 is None else f"{vp_cam} + {vp_cam_2}"
+        if vp_extra:
+            vp_info = f"{vp_cam} + {len(vp_extra)} 额外视口"
+        else:
+            vp_info = vp_cam
         print(
             f"场景已加载 | rig={self.camera_rig.rig_prim_path} | "
             f"初始=({self.pose[0]:.2f},{self.pose[1]:.2f},{self.pose[2]:.2f}) | "
@@ -453,12 +467,35 @@ def parse_args() -> argparse.Namespace:
         help="主视口绑定的相机：rig 上的名称如 CAM_A（默认）、CAM_Front，或 perspective",
     )
     p.add_argument(
+        "--viewport-cameras",
+        nargs="*",
+        default=None,
+        metavar="NAME",
+        help="额外 Viewport 窗口（可多个），如 CAM_B CAM_C CAM_D CAM_Front CAM_Back",
+    )
+    p.add_argument(
         "--viewport-camera-2",
         default=None,
         metavar="NAME",
-        help="可选第二视口窗口，绑定 rig 上另一路相机，如 CAM_Back（与 --viewport-camera 分屏预览）",
+        help="(兼容) 等同 --viewport-cameras 的单个相机",
     )
     return p.parse_args()
+
+
+def resolve_viewport_cameras_extra(args: argparse.Namespace) -> List[str]:
+    names: List[str] = []
+    if args.viewport_cameras:
+        names.extend(str(n).strip() for n in args.viewport_cameras if str(n).strip())
+    if args.viewport_camera_2:
+        names.append(str(args.viewport_camera_2).strip())
+    deduped: List[str] = []
+    seen: set[str] = set()
+    for name in names:
+        key = name.lower()
+        if key not in seen:
+            seen.add(key)
+            deduped.append(name)
+    return deduped
 
 
 def resolve_init_pose(args: argparse.Namespace) -> list[float]:
@@ -506,7 +543,7 @@ def main() -> None:
         init_pose=resolve_init_pose(args),
         follow_viewport=args.follow_viewport,
         viewport_camera=args.viewport_camera,
-        viewport_camera_2=args.viewport_camera_2,
+        viewport_cameras_extra=resolve_viewport_cameras_extra(args),
     )
     try:
         recorder.run()

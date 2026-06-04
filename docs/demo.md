@@ -92,16 +92,16 @@ test -f assets/cameras/oak_camera_4lut_2H30YA.usd && echo camera OK
 
 若要用编辑器透视相机俯视 rig：`--viewport-camera perspective`
 
-**双视口（前/后针孔）**：Isaac Sim 支持多个 Viewport 窗口。主视口 + 第二窗口示例：
+**多路相机视口**：Isaac Sim 支持多个 Viewport 窗口。主视口绑定一路相机，`--viewport-cameras` 为其余相机各开一个窗口（画面均随 rig 移动）：
 
 ```bash
 ./tools/demo_data/run_record_camera_rig_trajectory.sh \
   ... \
-  --viewport-camera CAM_Front \
-  --viewport-camera-2 CAM_Back
+  --viewport-camera CAM_A \
+  --viewport-cameras CAM_B CAM_C CAM_D CAM_Front CAM_Back
 ```
 
-会保留默认主 Viewport 绑定 `CAM_Front`，并再弹出一个独立窗口显示 `CAM_Back`（两路画面均随 rig 移动）。也可在 GUI 中 **Window → Viewport → New Viewport Window** 手动添加，再在视口左上角相机菜单里切换到 `CAM_Front` / `CAM_Back`。
+也可在 GUI 中 **Window → Viewport → New Viewport Window** 手动添加，再在视口左上角相机菜单切换。`--viewport-camera-2 CAM_Back` 仍可用（等价于只多开一个视口）。
 
 ### CameraRig 初始位姿参数
 
@@ -140,16 +140,17 @@ python3 tools/demo_data/keyboard_camera_rig_teleop.py \
 cd /home/fufa/projects2026/SimDataGen
 
 ./tools/demo_data/run_record_camera_rig_trajectory.sh \
-  --scene_usd /home/fufa/projects2026/SimDataGen/asset_extern/home_000/interior_template.usdc \
+  --scene_usd /home/fufa/projects2026/SimDataGen/asset_extern/kujiale/kujiale_0004/kujiale_0004.usda \
   --camera_usd /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA.usd \
   --output_dir /home/fufa/projects2026/SimDataGen/workdir/demo_trajectory/home_000_manual \
   --init_pose 1 1 1.5 0 0 0 \
-  --viewport-camera CAM_Front \
-  --viewport-camera-2 CAM_Back
+  --viewport-camera CAM_A \
+  --viewport-cameras CAM_B CAM_C CAM_D CAM_Front CAM_Back
 ```
 
 说明：
 
+- 主视口为 `CAM_A`；`--viewport-cameras` 会再弹出 5 个窗口分别显示鱼眼 B/C/D 与针孔 Front/Back（共 6 路预览）。
 - 初始位姿见上文「CameraRig 初始位姿参数」；欧拉角为 XYZ 顺序（度），与 `CameraRig.set_pose` 一致。
 - 会弹出 Isaac Sim 窗口；场景加载完成后日志提示等待 ROS2 指令。
 - 按 `Ctrl+C` 结束仿真（未按 `k` 的录制内容不会自动保存）。
@@ -302,8 +303,8 @@ export ROS_DOMAIN_ID=0
   --camera_usd assets/cameras/oak_camera_4lut_2H30YA.usd \
   --output_dir workdir/demo_trajectory/home_000_manual \
   --init_pose 0 0 1.5 0 0 0 \
-  --viewport-camera CAM_Front \
-  --viewport-camera-2 CAM_Back
+  --viewport-camera CAM_A \
+  --viewport-cameras CAM_B CAM_C CAM_D CAM_Front CAM_Back
 
 # 终端 B
 source /opt/ros/humble/setup.bash
