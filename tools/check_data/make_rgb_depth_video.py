@@ -3,8 +3,8 @@
 将 workdir 中每个任务文件夹的多相机 RGB + Depth 拼接成预览视频。
 
 每帧布局: CAM_A/B/C/D 俯视顺时针 2x2 排列 (左上→右上→右下→左下), 每格 [RGB | Depth]。
-先按原始比例拼接, 再整体等比缩放至目标分辨率并居中 (不足处黑边填充)。
-默认输出 4K (3840x3840)。
+先按原始比例拼接; 输出视频分辨率与拼接结果一致 (无黑边填充)。
+可选 --size 限制最长边, 仅在源图过大时等比缩小。
 输出视频文件名 = 文件夹名 (如 intime_home_000_100_1_30.mp4)。
 编码: H.264 (yuv420p), 可在 Cursor / 浏览器中直接预览。
 
@@ -38,7 +38,7 @@ import numpy as np
 
 RGB_SUFFIXES = (".jpg", ".jpeg", ".png")
 DEPTH_SUFFIXES = (".png",)
-DEFAULT_SIZE = 3840
+DEFAULT_MAX_SIZE = 0  # 0 = 使用拼接后的原始分辨率
 
 # 俯视顺时针: 左上 A → 右上 B → 右下 C → 左下 D
 CAMERAS_CLOCKWISE = ("CAM_A", "CAM_B", "CAM_C", "CAM_D", "CAM_Front", "CAM_Back")
@@ -107,11 +107,8 @@ class Layout:
     tile_w: int
     cell_h: int
     cell_w: int
-    content_h: int
-    content_w: int
-    pad_y: int
-    pad_x: int
-    size: int
+    frame_h: int
+    frame_w: int
     read_divisor: int
     slots: dict[str, tuple[int, int]]
 
@@ -199,26 +196,27 @@ def _pick_read_divisor(scale: float) -> int:
     return 1
 
 
-def _build_layout(src_h: int, src_w: int, size: int, cameras: list[str]) -> Layout:
-    """先按源图比例拼网格, 再整体等比缩放到 size×size 内并居中。"""
+def _build_layout(src_h: int, src_w: int, max_size: int, cameras: list[str]) -> Layout:
+    """按源图比例拼网格; 输出尺寸等于拼接结果, 仅在 max_size>0 且超长边时等比缩小。"""
     rows, cols = GRID_ROWS, GRID_COLS
     cell_h_src = src_h
     cell_w_src = src_w * 2
     content_h_src = rows * cell_h_src
     content_w_src = cols * cell_w_src
-    scale = min(size / content_h_src, size / content_w_src)
+    if max_size > 0:
+        scale = min(1.0, max_size / max(content_h_src, content_w_src))
+    else:
+        scale = 1.0
     tile_h = max(1, int(round(src_h * scale)))
     tile_w = max(1, int(round(src_w * scale)))
     cell_h, cell_w = tile_h, tile_w * 2
-    content_h, content_w = rows * cell_h, cols * cell_w
-    pad_y = (size - content_h) // 2
-    pad_x = (size - content_w) // 2
+    frame_h, frame_w = rows * cell_h, cols * cell_w
     slots: dict[str, tuple[int, int]] = {}
     for cam in cameras:
         if cam not in CAMERA_GRID_POS:
             continue
         row, col = CAMERA_GRID_POS[cam]
-        slots[cam] = (pad_y + row * cell_h, pad_x + col * cell_w)
+        slots[cam] = (row * cell_h, col * cell_w)
     return Layout(
         rows=rows,
         cols=cols,
@@ -226,11 +224,8 @@ def _build_layout(src_h: int, src_w: int, size: int, cameras: list[str]) -> Layo
         tile_w=tile_w,
         cell_h=cell_h,
         cell_w=cell_w,
-        content_h=content_h,
-        content_w=content_w,
-        pad_y=pad_y,
-        pad_x=pad_x,
-        size=size,
+        frame_h=frame_h,
+        frame_w=frame_w,
         read_divisor=_pick_read_divisor(scale),
         slots=slots,
     )
@@ -431,17 +426,17 @@ def _render_frame_task(
     depth_source: str,
     load_workers: int,
 ) -> np.ndarray | None:
-    square = np.zeros((layout.size, layout.size, 3), dtype=np.uint8)
+    frame = np.zeros((layout.frame_h, layout.frame_w, 3), dtype=np.uint8)
     if not _compose_frame(
         frame_paths,
         list(cameras),
         layout,
         depth_source,
-        square,
+        frame,
         load_workers=load_workers,
     ):
         return None
-    return square
+    return frame
 
 
 def _make_video_for_task(
@@ -450,7 +445,7 @@ def _make_video_for_task(
     task_total: int,
     fps: float,
     depth_source: str,
-    size: int,
+    max_size: int,
     progress_interval: int,
     *,
     output_dir: Path | None,
@@ -471,14 +466,14 @@ def _make_video_for_task(
 
     total_frames = len(frames)
     src_h, src_w = _infer_tile_size(task_dir, cameras, frames)
-    layout = _build_layout(src_h, src_w, size, cameras)
+    layout = _build_layout(src_h, src_w, max_size, cameras)
     frame_paths = _precompute_paths(task_dir, cameras, frames, depth_source)
     cameras_tuple = tuple(cameras)
     frame_workers = _effective_frame_workers(total_frames, workers)
 
     print(
         f"\n[{task_idx}/{task_total}] 处理文件夹: {task_dir.name} "
-        f"({total_frames} 帧, {len(cameras)} 相机, 输出 {size}x{size}, "
+        f"({total_frames} 帧, {len(cameras)} 相机, 输出 {layout.frame_w}x{layout.frame_h}, "
         f"frame_workers={frame_workers}, load_workers={load_workers})"
     )
 
@@ -487,7 +482,12 @@ def _make_video_for_task(
     else:
         out_path = task_dir / f"{task_dir.name}.mp4"
     writer = H264VideoWriter(
-        out_path, fps, size, size, preset=encode_preset, crf=encode_crf
+        out_path,
+        fps,
+        layout.frame_w,
+        layout.frame_h,
+        preset=encode_preset,
+        crf=encode_crf,
     )
 
     task_start = time.perf_counter()
@@ -503,15 +503,15 @@ def _make_video_for_task(
             )
             with ProcessPoolExecutor(max_workers=frame_workers) as pool:
                 chunk = max(1, total_frames // (frame_workers * 4))
-                for frame_idx, square in enumerate(pool.map(render, frame_paths, chunksize=chunk), start=1):
+                for frame_idx, frame in enumerate(pool.map(render, frame_paths, chunksize=chunk), start=1):
                     frame_id = frames[frame_idx - 1]
-                    if square is None:
+                    if frame is None:
                         print(
                             f"  [{task_dir.name}] 帧 {frame_idx}/{total_frames} ({frame_id}): 跳过(缺少图像)",
                             file=sys.stderr,
                         )
                         continue
-                    writer.write(square)
+                    writer.write(frame)
                     written += 1
                     if (
                         frame_idx == 1
@@ -522,15 +522,15 @@ def _make_video_for_task(
                             task_dir.name, frame_idx, total_frames, frame_id, task_start
                         )
         else:
-            square = np.zeros((size, size, 3), dtype=np.uint8)
+            frame = np.zeros((layout.frame_h, layout.frame_w, 3), dtype=np.uint8)
             for frame_idx, (frame_id, paths) in enumerate(zip(frames, frame_paths), start=1):
-                square.fill(0)
+                frame.fill(0)
                 if not _compose_frame(
                     paths,
                     cameras,
                     layout,
                     depth_source,
-                    square,
+                    frame,
                     load_workers=load_workers,
                 ):
                     print(
@@ -538,7 +538,7 @@ def _make_video_for_task(
                         file=sys.stderr,
                     )
                     continue
-                writer.write(square)
+                writer.write(frame)
                 written += 1
                 if (
                     frame_idx == 1
@@ -605,8 +605,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--size",
         type=int,
-        default=DEFAULT_SIZE,
-        help=f"输出正方形边长 (默认: {DEFAULT_SIZE}, 4K)",
+        default=DEFAULT_MAX_SIZE,
+        help=(
+            f"拼接图最长边上限, 仅当源图过大时等比缩小 (默认: {DEFAULT_MAX_SIZE}, "
+            "即使用拼接后的原始分辨率)"
+        ),
     )
     parser.add_argument(
         "--workers",
@@ -668,7 +671,7 @@ def main() -> int:
             task_total,
             args.fps,
             args.depth_source,
-            args.size,
+            args.size,  # max_size: 0 = native stitched resolution
             max(1, args.progress_interval),
             output_dir=output_dir,
             workers=max(1, args.workers),
