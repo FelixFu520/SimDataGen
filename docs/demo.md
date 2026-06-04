@@ -209,15 +209,29 @@ python3 tools/demo_data/keyboard_camera_rig_teleop.py \
 | `trajectory_0000.ply` | 路径可视化（可用 MeshLab / CloudCompare 打开） |
 | `trajectory_0000.json` | 元数据（点数、文件名等） |
 
-将某次录制用于自动采数时，可复制为工作目录下的 `trajectory/paths.npy`：
+### 按录制轨迹采数
+
+使用 `tools/demo_data/gen_data_from_trajectory.py`（输出目录结构与 `gen_data.py` 相同：`rgb/`、`depth/`、`semantic/`、`common/` 等）。**场景 USD 与相机 USD 须与录制时一致**；默认读取 `rig_poses_*.npy` 的完整 6 自由度（含 yaw），不做 occupancy / 自动路径。
 
 ```bash
-mkdir -p workdir/my_run/trajectory
-cp workdir/demo_trajectory/home_000_manual/paths_0000.npy \
-   workdir/my_run/trajectory/paths.npy
+cd /home/fufa/projects2026/SimDataGen
+
+# 全量 1079 点较慢，可先 --point_stride 5 试跑
+./tools/demo_data/run_gen_data_from_trajectory.sh \
+  --scene_usd_url /home/fufa/projects2026/SimDataGen/asset_extern/home_000/interior_template.usdc \
+  --camera_usd_url /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA.usd \
+  --trajectory_dir /home/fufa/projects2026/SimDataGen/workdir/demo_trajectory/home_000_manual \
+  --trajectory_tags 1 \
+  --output_dir /home/fufa/projects2026/SimDataGen/workdir/home_000_manual_data \
+  --point_stride 1
 ```
 
-然后在 `gen_data.py` 中改为读取该路径（若当前流程从 occupancy 自动生成路径，需在脚本或配置里指向手动轨迹）。
+| 参数 | 说明 |
+|------|------|
+| `--trajectory_dir` | 含 `rig_poses_XXXX.npy` 的目录 |
+| `--trajectory_tags` | 可选，如 `1` 对应 `rig_poses_0001.npy`；省略则处理全部段 |
+| `--point_stride` | 轨迹点下采样，例如 `5` 表示每 5 点采 1 帧 |
+| `--max_retry_attempts` | 默认 `0`，黑图时不旋转 yaw，避免偏离录制朝向 |
 
 ---
 
@@ -289,7 +303,8 @@ export ROS_DOMAIN_ID=0
 - `CameraRig` 位姿设置：`sdg_utils/camera.py` → `set_pose()`
 - 轨迹 PLY 工具：`sdg_utils/trajectory.py` → `save_path_ply()`
 - 自动路径生成（occupancy）：`sdg_utils/trajectory.py` → `gen_path_3d()`
-- 批量采数：`gen_data.py`
+- 批量采数（自动路径）：`gen_data.py`
+- 按录制轨迹采数：`tools/demo_data/gen_data_from_trajectory.py`
 - ROS2 订阅示例：Isaac Sim `standalone_examples/api/isaacsim.ros2.bridge/subscriber.py`
 
 ---
