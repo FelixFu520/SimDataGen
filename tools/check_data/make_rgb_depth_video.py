@@ -3,8 +3,8 @@
 将 workdir 中每个任务文件夹的多相机 RGB + Depth 拼接成预览视频。
 
 每帧布局: CAM_A/B/C/D 俯视顺时针 2x2 排列 (左上→右上→右下→左下), 每格 [RGB | Depth]。
-先按原始比例拼接; 输出视频分辨率与拼接结果一致 (无黑边填充)。
-可选 --size 限制最长边, 仅在源图过大时等比缩小。
+先按原始比例拼接, 默认等比缩放到 2K (最长边 2048), 无黑边填充。
+可用 --size 0 保留原始拼接分辨率, 或指定其他最长边上限。
 输出视频文件名 = 文件夹名 (如 intime_home_000_100_1_30.mp4)。
 编码: H.264 (yuv420p), 可在 Cursor / 浏览器中直接预览。
 
@@ -38,7 +38,7 @@ import numpy as np
 
 RGB_SUFFIXES = (".jpg", ".jpeg", ".png")
 DEPTH_SUFFIXES = (".png",)
-DEFAULT_MAX_SIZE = 0  # 0 = 使用拼接后的原始分辨率
+DEFAULT_MAX_SIZE = 2048  # 2K: 拼接图最长边上限
 
 # 俯视顺时针: 左上 A → 右上 B → 右下 C → 左下 D
 CAMERAS_CLOCKWISE = ("CAM_A", "CAM_B", "CAM_C", "CAM_D", "CAM_Front", "CAM_Back")
@@ -607,8 +607,8 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=DEFAULT_MAX_SIZE,
         help=(
-            f"拼接图最长边上限, 仅当源图过大时等比缩小 (默认: {DEFAULT_MAX_SIZE}, "
-            "即使用拼接后的原始分辨率)"
+            f"拼接图最长边上限, 超过则等比缩小 (默认: {DEFAULT_MAX_SIZE}, 2K; "
+            "0 = 使用原始拼接分辨率)"
         ),
     )
     parser.add_argument(
@@ -671,7 +671,7 @@ def main() -> int:
             task_total,
             args.fps,
             args.depth_source,
-            args.size,  # max_size: 0 = native stitched resolution
+            args.size,  # max_size: 2048 = 2K default; 0 = native stitched resolution
             max(1, args.progress_interval),
             output_dir=output_dir,
             workers=max(1, args.workers),
