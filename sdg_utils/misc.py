@@ -1,6 +1,19 @@
+import os
 import random
 import colorsys
 import itertools
+
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+
+def resolve_camera_usd_path(camera_usd_url: str) -> str:
+    """解析 --camera_usd_url：路径则原样使用，名称则映射到 assets/cameras/{name}.usd。"""
+    path_seps = tuple(s for s in (os.path.sep, os.path.altsep) if s)
+    if any(sep in camera_usd_url for sep in path_seps) or os.path.isabs(camera_usd_url):
+        return os.path.normpath(camera_usd_url)
+    if os.path.splitext(camera_usd_url)[1].lower() in (".usd", ".usdc", ".usda"):
+        return os.path.normpath(camera_usd_url)
+    return os.path.join(_REPO_ROOT, "assets/cameras", f"{camera_usd_url}.usd")
 
 def _fmt_duration(seconds: float) -> str:
     """将秒数格式化为易读的字符串(如 1h23m45.6s)。"""

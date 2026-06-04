@@ -46,7 +46,7 @@ from sdg_utils.transparency import (
     make_all_meshes_opaque,
     restore_meshes,
 )
-from sdg_utils.misc import _fmt_duration
+from sdg_utils.misc import _fmt_duration, resolve_camera_usd_path
 
 RENDER_COUNT = 5
 MAX_RETRY_ATTEMPTS = 1
@@ -56,7 +56,12 @@ parser = argparse.ArgumentParser()
 # 环境参数
 parser.add_argument("--seed", type=int, default=4)
 parser.add_argument("--scene_usd_url", type=str, default=None, help='场景USD文件路径')
-parser.add_argument("--camera_usd_url", type=str, default=None, help='相机USD文件路径')
+parser.add_argument(
+    "--camera_usd_url",
+    type=str,
+    default=None,
+    help="相机 USD：文件路径（含相对/绝对路径或 .usd/.usdc 后缀）或 assets/cameras 下的名称（不含扩展名）",
+)
 parser.add_argument("--output_dir", type=str, default=None, help='输出目录')
 # 生成occupancy所需参数
 parser.add_argument("--occupancy_resolution", type=float, default=0.1, help='occupancy分辨率')
@@ -266,8 +271,10 @@ if __name__ == "__main__":
     #   2. world.reset()
     #   3. rig.initialize(attach_depth=True, attach_semantic=True)
     #      - attach distance_to_image_plane / semantic_segmentation / instance_id_segmentation
+    camera_usd_path = resolve_camera_usd_path(args.camera_usd_url)
+    logger.info(f"相机 USD 路径: {camera_usd_path}")
     camera_rig = CameraRig(
-        camera_usd_path=os.path.join(os.path.dirname(__file__), "assets/cameras", f"{args.camera_usd_url}.usd"),
+        camera_usd_path=camera_usd_path,
         world=world,
         stage=stage,
         rig_prim_path="/World/camera_rig",
