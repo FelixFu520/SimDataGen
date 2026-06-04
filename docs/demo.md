@@ -200,7 +200,7 @@ python3 tools/demo_data/keyboard_camera_rig_teleop.py \
 
 ## 五、输出文件
 
-在 `--output_dir` 下每次按 `s` 会生成一组：
+在 `--output_dir` 下每次按 `k` 会生成一组：
 
 | 文件 | 说明 |
 |------|------|
@@ -234,97 +234,3 @@ cd /home/fufa/projects2026/SimDataGen
 | `--max_retry_attempts` | 默认 `0`，黑图时不旋转 yaw，避免偏离录制朝向 |
 
 ---
-
-## 六、架构示意
-
-```mermaid
-flowchart LR
-  KB[终端 B 键盘] -->|rclpy 发布| ROS[ROS2 DDS]
-  ROS -->|订阅| SIM[终端 A Isaac Sim]
-  SIM --> CR[CameraRig.set_pose]
-  CR --> USD[USD 场景 + 相机 prim]
-  SIM -->|按 s 保存| OUT[paths_*.npy / rig_poses_*.npy]
-```
-
-与 Teleoperation 机械臂方案对比：
-
-| 项目 | 控制量 | 话题示例 |
-|------|--------|----------|
-| TeleoperationManipulator | 关节角 IK → `JointState` | `/joint_command` |
-| 本 Demo | rig 离散步进 | `/camera_rig/nudge` 等 |
-
----
-
-## 七、常见问题
-
-### 1. `ROS2 Bridge startup failed` / `No module named 'rclpy'`
-
-终端若打印 FastDDS/CycloneDDS 的 `export` 说明，表示 **启动 Isaac Sim 前未设置 ROS2 环境变量**。
-
-```bash
-export ROS_DISTRO=humble
-export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
-export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/fufa/isaac_sim/5.1/exts/isaacsim.ros2.bridge/humble/lib
-export ROS_DOMAIN_ID=0
-```
-
-推荐改用：
-
-```bash
-./tools/demo_data/run_record_camera_rig_trajectory.sh ...
-```
-
-### 2. 键盘无反应
-
-- 终端 B 是否 `source /opt/ros/humble/setup.bash` 且 **窗口处于焦点**。
-- 两端 `ROS_DOMAIN_ID` 是否一致。
-- 终端 A 仿真是否已打印「等待 ROS2 键盘遥操」。
-- `ros2 topic list` 是否能看到 `/camera_rig/nudge`。
-
-### 3. 视口全黑或一片黑
-
-- 确认 `--init_pose` 的 XY/Z 在房间内部；可 **View → Frame All**。
-- 默认 `CAM_A` 视角下，rig 在墙内/朝墙外也会全黑，用 `a`/`d`/`w`/`s` 移到开阔处。
-- 若曾用旧版脚本把画面弄黑，重启 `run_record_camera_rig_trajectory.sh`。
-
-### 4. 看不到 CameraRig / 场景全黑（透视模式）
-
-- 调整 `--init_pose` 的 Z 与 XY，使 rig 位于房间内部。
-- 首次加载大场景需等待数秒；可在 Isaac Sim 视口中手动 Fly 到 rig 附近确认。
-
-### 5. 仅 GUI 拖场景、不用本脚本？
-
-也可以像 Teleoperation 那样在 GUI 中打开场景 USD，再单独运行带 ROS 订阅的脚本；本仓库推荐用 `record_camera_rig_trajectory.py` 一次性完成 **加载场景 + 挂载 CameraRig + 订阅 ROS + 写轨迹**，避免漏挂 rig 或 prim 路径不一致。
-
----
-
-## 八、相关代码索引
-
-- `CameraRig` 位姿设置：`sdg_utils/camera.py` → `set_pose()`
-- 轨迹 PLY 工具：`sdg_utils/trajectory.py` → `save_path_ply()`
-- 自动路径生成（occupancy）：`sdg_utils/trajectory.py` → `gen_path_3d()`
-- 批量采数（自动路径）：`gen_data.py`
-- 按录制轨迹采数：`tools/demo_data/gen_data_from_trajectory.py`
-- ROS2 订阅示例：Isaac Sim `standalone_examples/api/isaacsim.ros2.bridge/subscriber.py`
-
----
-
-## 九、快速命令汇总
-
-```bash
-# 终端 A
-./tools/demo_data/run_record_camera_rig_trajectory.sh \
-  --scene_usd asset_extern/home_000/interior_template.usdc \
-  --camera_usd assets/cameras/oak_camera_4lut_2H30YA.usd \
-  --output_dir workdir/demo_trajectory/home_000_manual \
-  --init_pose 0 0 1.5 0 0 0 \
-  --viewport-camera CAM_A \
-  --viewport-cameras CAM_B CAM_C CAM_D CAM_Front CAM_Back
-
-# 终端 B
-source /opt/ros/humble/setup.bash
-export ROS_DOMAIN_ID=0
-python3 tools/demo_data/keyboard_camera_rig_teleop.py
-```
-
-录制：`j` 开始、`k` 保存；移动：`a`/`d` 左右、`w`/`s` 前后；步长：`q`/`e`；退出：`x`；结束仿真：终端 A `Ctrl+C`。
