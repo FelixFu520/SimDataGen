@@ -141,7 +141,7 @@ cd /home/fufa/projects2026/SimDataGen
 
 ./tools/demo_data/run_record_camera_rig_trajectory.sh \
   --scene_usd /home/fufa/projects2026/SimDataGen/asset_extern/home_000/interior_template.usdc \
-  --camera_usd /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H30YA_trajectory.usd \
+  --camera_usd /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA.usd \
   --output_dir /home/fufa/projects2026/SimDataGen/workdir/demo_trajectory/home_000_manual \
   --init_pose 1 1 1.5 0 0 0 \
   --viewport-camera CAM_Front \
