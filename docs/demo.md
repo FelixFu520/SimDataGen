@@ -178,6 +178,7 @@ cd /home/fufa/projects2026/SimDataGen
 
 - **终端 A 不要** `source /opt/ros/humble/setup.bash`（若 `.bashrc` 已自动 source，请新开干净 shell 或 `unset PYTHONPATH` 后再跑）。系统 ROS 的 Python 3.10 `rclpy` 会与 Isaac Sim 3.11 冲突，导致 `rclpy._rclpy_pybind11` 加载失败；`run_record_camera_rig_trajectory.sh` 会自动改用扩展内置的 `humble/rclpy`。
 - 主视口为 `CAM_A`；`--viewport-cameras` 会在主窗口内停靠 2×3 网格，显示鱼眼 A/B/C/D 与针孔 Front/Back（共 6 路预览）。
+- **默认快速预览渲染**（强制 **RTX Real-Time**，关闭反射/AO/Motion BVH；空闲低频刷帧，步进后单帧刷新）。若视口仍黑，确认 Render Settings 中 Renderer 为 **Real-Time** 而非 Path Tracing；需要更高画质时加 `--hq-preview`。
 - 右侧会显示 **Occupancy 横截面地图**，红点标记 CameraRig 在 `z=1.5` 平面上的位置；键盘移动时实时更新（详见上文「Occupancy 横截面地图」）。
 - 初始位姿见上文「CameraRig 初始位姿参数」；欧拉角为 XYZ 顺序（度），与 `CameraRig.set_pose` 一致。`--init_pose` 的 Z 同时决定横截面高度。
 - 会弹出 Isaac Sim 窗口；场景加载完成后日志提示等待 ROS2 指令。

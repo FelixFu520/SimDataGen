@@ -26,12 +26,27 @@ from tools.demo_data.ros2_bridge_env import print_setup_hint, setup_isaac_ros2_b
 
 setup_isaac_ros2_bridge_env()
 
-from isaacsim import SimulationApp
+
+def _wants_hq_preview() -> bool:
+    return "--hq-preview" in sys.argv
+
+
+_FAST_PREVIEW = not _wants_hq_preview()
 
 launch_config = {
     "headless": False,
     "renderer": "RaytracedLighting",
 }
+if _FAST_PREVIEW:
+    launch_config["extra_args"] = [
+        "--/rtx/post/dlss/execMode=0",
+        "--/renderer/raytracingMotion/enabled=false",
+        "--/renderer/raytracingMotion/enableHydraEngineMasking=false",
+        "--/renderer/raytracingMotion/enabledForHydraEngines=''",
+        "--/rtx/pathtracing/cached/retrace=0.1",
+    ]
+
+from isaacsim import SimulationApp
 simulation_app = SimulationApp(launch_config=launch_config)
 
 import argparse
@@ -47,6 +62,24 @@ from isaacsim.core.utils.extensions import enable_extension
 
 settings = carb.settings.get_settings()
 settings.set("/rtx/verifyDriverVersion/enabled", False)
+
+
+def configure_trajectory_preview_render(fast_preview: bool = True) -> None:
+    """轨迹录制预览：RTX Real-Time + 安全项降质，避免关光照/材质导致黑屏。"""
+    if not fast_preview:
+        return
+    s = settings
+    s.set("/rtx/rendermode", "RaytracedLighting")
+    s.set_int("/rtx/post/dlss/execMode", 0)
+    s.set("/renderer/raytracingMotion/enabled", False)
+    s.set("/renderer/raytracingMotion/enableHydraEngineMasking", False)
+    s.set("/renderer/raytracingMotion/enabledForHydraEngines", "")
+    s.set("/rtx/pathtracing/cached/retrace", 0.1)
+    s.set("/rtx/reflections/enabled", False)
+    s.set("/rtx/ambientOcclusion/enabled", False)
+
+
+configure_trajectory_preview_render(_FAST_PREVIEW)
 
 enable_extension("isaacsim.ros2.bridge")
 enable_extension("isaacsim.asset.gen.omap")
@@ -107,6 +140,7 @@ class CameraRigTrajectoryRecorder(Node):
         viewport_camera: str = "CAM_Front",
         viewport_cameras_extra: Optional[List[str]] = None,
         occ_map_panel: Optional[OccupancyMapPanel] = None,
+        fast_preview: bool = True,
     ):
         super().__init__("camera_rig_trajectory_recorder")
         self.get_logger().set_level(rclpy.logging.LoggingSeverity.WARN)
@@ -115,6 +149,8 @@ class CameraRigTrajectoryRecorder(Node):
         self.camera_rig = camera_rig
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
+        self.fast_preview = bool(fast_preview)
+        self._idle_render_tick = 0
 
         self.pose = [float(v) for v in init_pose]  # x,y,z, roll,pitch,yaw (deg)
         self.fixed_z = float(init_pose[2])
@@ -211,7 +247,7 @@ class CameraRigTrajectoryRecorder(Node):
                 f"额外视口：未找到相机 '{camera_name}'，可用: {avail}"
             )
             return None
-        vp_w, vp_h = 520, 390
+        vp_w, vp_h = (360, 270) if self.fast_preview else (520, 390)
         cols = 3
         row, col = divmod(index, cols)
         try:
@@ -233,6 +269,22 @@ class CameraRigTrajectoryRecorder(Node):
         except Exception as exc:
             logger.warning(f"创建视口失败 ({camera_name}): {exc}")
         return None
+
+    def _ensure_realtime_render_mode(self) -> None:
+        """强制视口使用 RTX Real-Time，避免 PathTracing 累积导致黑屏/卡顿。"""
+        if not self.fast_preview:
+            return
+        settings.set("/rtx/rendermode", "RaytracedLighting")
+        try:
+            import omni.kit.commands
+
+            omni.kit.commands.execute(
+                "ChangeSetting",
+                path="/rtx/rendermode",
+                value="RaytracedLighting",
+            )
+        except Exception:
+            pass
 
     @staticmethod
     async def _dock_viewport_window(
@@ -450,8 +502,12 @@ class CameraRigTrajectoryRecorder(Node):
         except Exception:
             pass
 
-    def _refresh_sim_view(self, n_frames: int = 3) -> None:
-        """每次键盘步进后强制刷新 Isaac 画面。"""
+    def _refresh_sim_view(self, n_frames: int | None = None) -> None:
+        """键盘步进后刷新 Isaac 画面；快速预览默认只渲染 1 帧。"""
+        if self.fast_preview:
+            self._ensure_realtime_render_mode()
+        if n_frames is None:
+            n_frames = 1 if self.fast_preview else 3
         for _ in range(n_frames):
             self.world.step(render=True)
             simulation_app.update()
@@ -562,23 +618,30 @@ class CameraRigTrajectoryRecorder(Node):
             self.world.step(render=True)
             simulation_app.update()
         vp_cam, vp_extra = self._setup_viewports()
+        self._ensure_realtime_render_mode()
         self._follow_viewport_now()
-        self._refresh_sim_view(n_frames=8)
+        self._refresh_sim_view(n_frames=6 if self.fast_preview else 8)
         if vp_extra:
             vp_info = f"{vp_cam} + {len(vp_extra)} 额外视口"
         else:
             vp_info = vp_cam
+        preview_mode = "快速预览" if self.fast_preview else "高质量预览"
         print(
             f"场景已加载 | rig={self.camera_rig.rig_prim_path} | "
             f"初始=({self.pose[0]:.2f},{self.pose[1]:.2f},{self.pose[2]:.2f}) | "
-            f"z={self.fixed_z:.2f} | 视口相机={vp_info}",
+            f"z={self.fixed_z:.2f} | 视口相机={vp_info} | 渲染={preview_mode}",
             flush=True,
         )
         print("等待键盘: j=开始录 k=保存 | a/d=左右 w/s=前后 | 轨迹打印见下方\n", flush=True)
         self._print_move_log(0.0, 0.0, prefix="初始")
 
         while simulation_app.is_running():
-            self.world.step(render=True)
+            if self.fast_preview:
+                self._idle_render_tick += 1
+                render = self._idle_render_tick % 4 == 0
+            else:
+                render = True
+            self.world.step(render=render)
             rclpy.spin_once(self, timeout_sec=0.0)
             simulation_app.update()
 
@@ -632,6 +695,11 @@ def parse_args() -> argparse.Namespace:
         type=float,
         default=0.1,
         help="occupancy 体素分辨率 (米)，用于生成 z 横截面地图",
+    )
+    p.add_argument(
+        "--hq-preview",
+        action="store_true",
+        help="高质量视口渲染（光线追踪/多帧累积，步进较慢；默认快速预览）",
     )
     p.add_argument(
         "--no-occupancy-map",
@@ -757,6 +825,7 @@ def main() -> None:
         viewport_camera=args.viewport_camera,
         viewport_cameras_extra=resolve_viewport_cameras_extra(args),
         occ_map_panel=occ_map_panel,
+        fast_preview=not args.hq_preview,
     )
     try:
         recorder.run()

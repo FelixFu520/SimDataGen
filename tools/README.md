@@ -47,7 +47,7 @@ SimDataGen 辅助脚本集合，按功能分为相机配置、采数演示、数
 | 脚本 | 功能 |
 |---|---|
 | `run_record_camera_rig_trajectory.sh` | 封装启动脚本：自动配置 Isaac Sim ROS2 bridge 环境变量（`ROS_DISTRO`、`LD_LIBRARY_PATH`、`PYTHONPATH` 等），避免与系统 `/opt/ros` 的 Python 3.10 冲突 |
-| `record_camera_rig_trajectory.py` | 在 Isaac Sim 中加载场景 + CameraRig，经 ROS2 接收键盘遥操指令，录制 rig 位姿序列，保存为 `rig_poses_XXXX.npy` |
+| `record_camera_rig_trajectory.py` | 在 Isaac Sim 中加载场景 + CameraRig，经 ROS2 接收键盘遥操指令，录制 rig 位姿序列，保存为 `rig_poses_XXXX.npy`；默认快速预览渲染（步进后单帧刷新），可选 `--hq-preview` |
 | `keyboard_camera_rig_teleop.py` | 键盘遥操节点（系统 Python + ROS2）：`a/d/w/s` 平移、`u/i` 升降、`z/c` yaw 旋转、`j/k` 开始/停止录制；发布 `/camera_rig/nudge`、`/camera_rig/record` 等 topic |
 | `ros2_bridge_env.py` | ROS2 bridge 环境变量设置库，供 `record_camera_rig_trajectory.py` 在启动 SimulationApp 前调用 |
 | `run_gen_data_from_trajectory.sh` | 封装启动 `gen_data_from_trajectory.py` |
