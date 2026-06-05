@@ -199,6 +199,7 @@ python3 tools/demo_data/keyboard_camera_rig_teleop.py --step-size 0.1
 | `w` / `s` | CameraRig **向前 / 向后**（每按一步） |
 | `z` / `c` | yaw **左 / 右**（每按一次 **10°**） |
 | `q` / `e` | 步长 **减小 / 增大** |
+| `b` | 切换 `a`/`d`、`w`/`s` 方向（再按恢复） |
 | `j` / `k` | **开始**录制 / **停止**并保存 |
 | `x` | 退出键盘节点 |
 

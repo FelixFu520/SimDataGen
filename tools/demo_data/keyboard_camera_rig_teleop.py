@@ -10,6 +10,7 @@
     w / s        : CameraRig 向前 / 向后
     z / c        : yaw 左 / 右旋转（每按一次 10°）
     q / e        : 减小 / 增大步长
+    b            : 切换 a/d、w/s 方向（再按恢复）
     j / k        : 开始 / 停止录制
     x            : 退出
 
@@ -47,6 +48,7 @@ HELP_LINES = [
     "  w / s     向前 / 向后",
     "  z / c     yaw  左 / 右   （每按一次 10°）",
     "  q / e     步长  减小 / 增大",
+    "  b         切换 a/d、w/s 方向（再按恢复）",
     "  j / k     开始录制 / 停止并保存",
     "  x         退出",
     "  Z 固定为初始高度，不随按键改变",
@@ -114,6 +116,7 @@ class KeyboardTeleop(Node):
         self.min_step = float(min_step)
         self.max_step = float(max_step)
         self.rig_pose: list[float] | None = None
+        self.invert_move = False
         self.flash_msg = ""
         self.flash_until = 0.0
 
@@ -175,20 +178,25 @@ class KeyboardTeleop(Node):
         flash = ""
         if time.monotonic() < self.flash_until:
             flash = f" | {self.flash_msg}"
-        return f"step={self.step_size:.2f} m{pose_s}{flash}"
+        inv_s = " | 方向:反转" if self.invert_move else ""
+        return f"step={self.step_size:.2f} m{inv_s}{pose_s}{flash}"
 
     def _handle_key(self, key: str) -> bool:
         """返回 False 表示退出。"""
         if key in ("x", "X"):
             return False
+        inv = -1 if self.invert_move else 1
         if key in ("a", "A"):
-            self._nudge_move(lateral_sign=-1)
+            self._nudge_move(lateral_sign=-1 * inv)
         elif key in ("d", "D"):
-            self._nudge_move(lateral_sign=1)
+            self._nudge_move(lateral_sign=1 * inv)
         elif key in ("w", "W"):
-            self._nudge_move(longitudinal_sign=1)
+            self._nudge_move(longitudinal_sign=1 * inv)
         elif key in ("s", "S"):
-            self._nudge_move(longitudinal_sign=-1)
+            self._nudge_move(longitudinal_sign=-1 * inv)
+        elif key in ("b", "B"):
+            self.invert_move = not self.invert_move
+            self._flash("方向控制 已反转" if self.invert_move else "方向控制 正常")
         elif key in ("z", "Z"):
             self._nudge_yaw(1)
         elif key in ("c", "C"):
