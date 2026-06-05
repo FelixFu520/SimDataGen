@@ -19,7 +19,7 @@ SCRIPT_DIR="${PROJECT_DIR}/scripts/scripts"
 # echo "SCRIPT_DIR($0): ${SCRIPT_DIR}"
 ONE_TASK_SCRIPT="${PROJECT_DIR}/scripts/submit_all_seed_one_task.sh"
 # echo "ONE_TASK_SCRIPT($0): ${ONE_TASK_SCRIPT}"
-CAMERA_NAME=${1:-"oak_camera_4lut_2H30YA"}
+CAMERA_NAME=${1:-"oak_camera_4lut_2H110SA"}
 # echo "CAMERA_NAME($0): ${CAMERA_NAME}"
 
 if [[ ! -x "${ONE_TASK_SCRIPT}" ]]; then
