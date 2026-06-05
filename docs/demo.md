@@ -164,7 +164,7 @@ cd /home/fufa/projects2026/SimDataGen
 
 ./tools/demo_data/run_record_camera_rig_trajectory.sh \
   --scene_usd /home/fufa/projects2026/SimDataGen/asset_extern/kujiale/kujiale_0030/kujiale_0030.usda \
-  --camera_usd /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA_regular.usd \
+  --camera_usd /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA.usd \
   --output_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory/kujiale_0030 \
   --init_pose 1 1 1.5 0 0 0 \
   --occupancy-resolution 0.1 \
@@ -244,7 +244,7 @@ cd /home/fufa/projects2026/SimDataGen
 
 ./tools/demo_data/run_gen_data_from_trajectory.sh \
   --scene_usd_url /home/fufa/projects2026/SimDataGen/asset_extern/kujiale/kujiale_0030/kujiale_0030.usda \
-  --camera_usd_url /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA_regular.usd \
+  --camera_usd_url /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA.usd \
   --trajectory_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory/kujiale_0030 \
   --trajectory_tags 0 \
   --output_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory_data/kujiale_0030 \
