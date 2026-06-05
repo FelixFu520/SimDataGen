@@ -321,6 +321,35 @@ def discover_vis_frames(
     return entries
 
 
+def build_vis_tag_to_path_row(
+    vis_path_tags: list[int],
+    num_paths: int,
+    selected_rows: set[int],
+) -> dict[int, int]:
+    """将 vis/ 文件名中的 path 编号映射到 paths.npy 行下标。
+
+    gen_data.py 使用 0 起标; gen_data_from_trajectory 沿用 rig_poses_XXXX 的 XXXX
+    (可为 0001 等), 此时 paths.npy 仍只有一行且下标为 0。
+    """
+    unique = sorted(set(vis_path_tags))
+    if not unique or num_paths <= 0:
+        return {}
+
+    if unique == list(range(num_paths)):
+        return {tag: tag for tag in unique if tag in selected_rows}
+
+    if len(unique) == num_paths:
+        base = unique[0]
+        if unique == list(range(base, base + num_paths)):
+            return {
+                tag: row
+                for tag, row in ((t, t - base) for t in unique)
+                if row in selected_rows
+            }
+
+    return {tag: tag for tag in unique if tag in selected_rows and tag < num_paths}
+
+
 def write_tf(writer: ProtobufWriter, stamp: datetime, frame_id: str, log_t: int) -> None:
     tf = make_frame_transform_proto(stamp, frame_id)
     writer.write_message("/tf", tf, log_time=log_t, publish_time=log_t)
@@ -516,9 +545,29 @@ def main() -> None:
         if i not in path_idx_set:
             print(f"[跳过] 无效 path_idx={i}", file=sys.stderr)
 
-    all_frames = [(p, pt) for p, pt in vis_frames if p in path_idx_set]
+    vis_tags = [p for p, _ in vis_frames]
+    tag_to_row = build_vis_tag_to_path_row(
+        vis_tags, paths_arr.shape[0], path_idx_set,
+    )
+    all_frames: list[tuple[int, int, int]] = []
+    for vis_tag, point_idx in vis_frames:
+        path_row = tag_to_row.get(vis_tag)
+        if path_row is not None:
+            all_frames.append((path_row, vis_tag, point_idx))
+
+    if tag_to_row and any(t != r for t, r in tag_to_row.items()):
+        pairs = ', '.join(f"vis {t:04d}->paths[{r}]" for t, r in sorted(tag_to_row.items()))
+        print(f"路径编号映射: {pairs}")
+
     if not all_frames:
+        vis_tag_set = sorted({p for p, _ in vis_frames})
         print("\n未找到可处理的 vis 帧", file=sys.stderr)
+        if vis_frames and vis_tag_set:
+            print(
+                f"  vis 路径编号 {vis_tag_set}, paths.npy 行下标 {sorted(path_idx_set)}; "
+                "手动轨迹采数时 vis 编号常与 paths.npy 行号不一致",
+                file=sys.stderr,
+            )
         sys.exit(1)
 
     occupied_npy = os.path.join(workdir, 'occupancy', OCCUPANCY_NPY)
@@ -547,20 +596,20 @@ def main() -> None:
     total_bytes = 0
     accumulate_chunks: list[np.ndarray] = []
 
-    for global_i, (path_idx, point_idx) in enumerate(all_frames):
+    for global_i, (path_row, vis_tag, point_idx) in enumerate(all_frames):
         stamp = frame_stamp(base_time, global_i, args.fps)
-        stem = frame_stem(path_idx, point_idx)
-        out_path = mcap_frame_output_path(out_dir, workdir_name, path_idx, point_idx)
+        stem = frame_stem(vis_tag, point_idx)
+        out_path = mcap_frame_output_path(out_dir, workdir_name, vis_tag, point_idx)
         print(
             f"\n[{global_i + 1}/{len(all_frames)}] {stem} "
             f"t={stamp.isoformat()} -> {os.path.basename(out_path)}"
         )
         print(f"  合并 ({', '.join(cameras)}) ...")
 
-        path_xyz = paths_arr[path_idx]
+        path_xyz = paths_arr[path_row]
         frame_data = write_frame_mcap(
             out_path,
-            path_idx,
+            vis_tag,
             point_idx,
             path_xyz,
             vis_dir=vis_dir,

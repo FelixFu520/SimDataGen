@@ -92,7 +92,10 @@ test -f assets/cameras/oak_camera_4lut_2H30YA.usd && echo camera OK
 
 若要用编辑器透视相机俯视 rig：`--viewport-camera perspective`
 
-**多路相机视口**：Isaac Sim 支持多个 Viewport 窗口。主视口绑定一路相机，`--viewport-cameras` 为其余相机各开一个窗口（画面均随 rig 移动）：
+**多路相机视口**：指定 `--viewport-camera CAM_A` 且 `--viewport-cameras` 列出其余 5 路时，脚本会在 Isaac 主窗口内自动停靠成 **2×3 网格**（与下方截图一致）：
+
+| 上行 | CAM_A | CAM_Front | CAM_B |
+| 下行 | CAM_D | CAM_Back | CAM_C |
 
 ```bash
 ./tools/demo_data/run_record_camera_rig_trajectory.sh \
@@ -101,7 +104,7 @@ test -f assets/cameras/oak_camera_4lut_2H30YA.usd && echo camera OK
   --viewport-cameras CAM_B CAM_C CAM_D CAM_Front CAM_Back
 ```
 
-也可在 GUI 中 **Window → Viewport → New Viewport Window** 手动添加，再在视口左上角相机菜单切换。`--viewport-camera-2 CAM_Back` 仍可用（等价于只多开一个视口）。
+`--viewport-cameras` 的参数顺序不影响网格位置。若只开少量额外视口，则回退为独立浮动窗口。也可在 GUI 中 **Window → Viewport → New Viewport Window** 手动添加。`--viewport-camera-2 CAM_Back` 仍可用（等价于只多开一个视口）。
 
 ### CameraRig 初始位姿参数
 
@@ -140,9 +143,9 @@ python3 tools/demo_data/keyboard_camera_rig_teleop.py \
 cd /home/fufa/projects2026/SimDataGen
 
 ./tools/demo_data/run_record_camera_rig_trajectory.sh \
-  --scene_usd /home/fufa/projects2026/SimDataGen/asset_extern/kujiale/kujiale_0004/kujiale_0004.usda \
-  --camera_usd /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA.usd \
-  --output_dir /home/fufa/projects2026/SimDataGen/workdir/demo_trajectory/home_000_manual \
+  --scene_usd /home/fufa/projects2026/SimDataGen/asset_extern/kujiale/kujiale_0030/kujiale_0030.usda \
+  --camera_usd /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA_regular.usd \
+  --output_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory/kujiale_0030 \
   --init_pose 1 1 1.5 0 0 0 \
   --viewport-camera CAM_A \
   --viewport-cameras CAM_B CAM_C CAM_D CAM_Front CAM_Back
@@ -150,7 +153,8 @@ cd /home/fufa/projects2026/SimDataGen
 
 说明：
 
-- 主视口为 `CAM_A`；`--viewport-cameras` 会再弹出 5 个窗口分别显示鱼眼 B/C/D 与针孔 Front/Back（共 6 路预览）。
+- **终端 A 不要** `source /opt/ros/humble/setup.bash`（若 `.bashrc` 已自动 source，请新开干净 shell 或 `unset PYTHONPATH` 后再跑）。系统 ROS 的 Python 3.10 `rclpy` 会与 Isaac Sim 3.11 冲突，导致 `rclpy._rclpy_pybind11` 加载失败；`run_record_camera_rig_trajectory.sh` 会自动改用扩展内置的 `humble/rclpy`。
+- 主视口为 `CAM_A`；`--viewport-cameras` 会在主窗口内停靠 2×3 网格，显示鱼眼 A/B/C/D 与针孔 Front/Back（共 6 路预览）。
 - 初始位姿见上文「CameraRig 初始位姿参数」；欧拉角为 XYZ 顺序（度），与 `CameraRig.set_pose` 一致。
 - 会弹出 Isaac Sim 窗口；场景加载完成后日志提示等待 ROS2 指令。
 - 按 `Ctrl+C` 结束仿真（未按 `k` 的录制内容不会自动保存）。
@@ -218,11 +222,19 @@ cd /home/fufa/projects2026/SimDataGen
 
 # 全量 1079 点较慢，可先 --point_stride 5 试跑
 ./tools/demo_data/run_gen_data_from_trajectory.sh \
-  --scene_usd_url /home/fufa/projects2026/SimDataGen/asset_extern/home_000/interior_template.usdc \
-  --camera_usd_url /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA.usd \
-  --trajectory_dir /home/fufa/projects2026/SimDataGen/workdir/demo_trajectory/home_000_manual \
+  --scene_usd_url /home/fufa/projects2026/SimDataGen/asset_extern/kujiale/kujiale_0004/kujiale_0004.usda \
+  --camera_usd_url /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut.usd \
+  --trajectory_dir /home/fufa/projects2026/SimDataGen/workdir/demo_trajectory/kujiale_0004 \
   --trajectory_tags 1 \
-  --output_dir /home/fufa/projects2026/SimDataGen/workdir/home_000_manual_data \
+  --output_dir /home/fufa/projects2026/SimDataGen/workdir/kujiale_0004 \
+  --point_stride 1
+
+./tools/demo_data/run_gen_data_from_trajectory.sh \
+  --scene_usd_url /home/fufa/projects2026/SimDataGen/asset_extern/kujiale/kujiale_0030/kujiale_0030.usda \
+  --camera_usd_url /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut.usd \
+  --trajectory_dir /home/fufa/projects2026/SimDataGen/workdir/demo_trajectory/kujiale_0030 \
+  --trajectory_tags 1 \
+  --output_dir /home/fufa/projects2026/SimDataGen/workdir/kujiale_0030 \
   --point_stride 1
 ```
 

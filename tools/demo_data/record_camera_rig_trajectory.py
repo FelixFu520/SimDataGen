@@ -75,6 +75,12 @@ from sdg_utils.trajectory import save_path_ply
 
 # Isaac 编辑器默认透视相机，勿用 CameraRig 上的 CAM_* 作为视口相机
 VIEWPORT_OBSERVER_CAMERA = "/OmniverseKit_Persp"
+PRIMARY_VIEWPORT_WINDOW = "Viewport"
+# 6 路相机在主窗口内 2×3 停靠布局（与 demo 截图一致）
+VIEWPORT_GRID_ROWS = (
+    ("CAM_A", "CAM_Front", "CAM_B"),
+    ("CAM_D", "CAM_Back", "CAM_C"),
+)
 
 logger.remove()
 logger.add(sys.stdout, format="{message}", level="INFO", colorize=True)
@@ -170,7 +176,14 @@ class CameraRigTrajectoryRecorder(Node):
         except Exception:
             pass
 
-    def _create_secondary_viewport(self, camera_name: str, index: int = 0) -> Optional[str]:
+    def _viewport_window_name(self, camera_name: str) -> str:
+        if camera_name == "CAM_A":
+            return PRIMARY_VIEWPORT_WINDOW
+        return f"Viewport {camera_name}"
+
+    def _create_secondary_viewport(
+        self, camera_name: str, index: int = 0, *, docked: bool = False
+    ) -> Optional[str]:
         """再开一个 Viewport 窗口并绑定 rig 上的相机。"""
         cam_path = self._resolve_rig_camera_path(camera_name)
         if cam_path is None:
@@ -185,14 +198,16 @@ class CameraRigTrajectoryRecorder(Node):
         try:
             from omni.kit.viewport.utility import create_viewport_window
 
-            window = create_viewport_window(
-                name=f"Viewport {camera_name}",
-                width=vp_w,
-                height=vp_h,
-                position_x=40 + col * (vp_w + 16),
-                position_y=40 + row * (vp_h + 40),
-                camera_path=cam_path,
-            )
+            kwargs = {
+                "name": self._viewport_window_name(camera_name),
+                "width": vp_w,
+                "height": vp_h,
+                "camera_path": cam_path,
+            }
+            if not docked:
+                kwargs["position_x"] = 40 + col * (vp_w + 16)
+                kwargs["position_y"] = 40 + row * (vp_h + 40)
+            window = create_viewport_window(**kwargs)
             if window is not None:
                 self._set_viewport_camera_on_api(window.viewport_api, cam_path)
                 return cam_path
@@ -200,7 +215,94 @@ class CameraRigTrajectoryRecorder(Node):
             logger.warning(f"创建视口失败 ({camera_name}): {exc}")
         return None
 
-    def _setup_viewports(self) -> tuple[str, List[str]]:
+    @staticmethod
+    async def _dock_viewport_window(
+        child_name: str, parent_name: str, position, ratio: float, wait_frames: int = 4
+    ) -> None:
+        import omni.kit.app
+        from omni import ui
+
+        app = omni.kit.app.get_app()
+        for _ in range(30):
+            child = ui.Workspace.get_window(child_name)
+            parent = ui.Workspace.get_window(parent_name)
+            if child is not None and parent is not None:
+                child.deferred_dock_in(parent_name)
+                for _ in range(wait_frames):
+                    await app.next_update_async()
+                child.dock_in(parent, position, ratio)
+                await app.next_update_async()
+                return
+            await app.next_update_async()
+
+    def _schedule_viewport_grid_docking(self) -> None:
+        """将 5 个额外观口停靠成 2×3 网格（主视口 CAM_A 占左上）。"""
+        try:
+            import omni.kit.async_engine
+            from omni import ui
+        except ImportError:
+            return
+
+        async def _dock_all() -> None:
+            # 上行：CAM_Front | CAM_B 依次向右拆分
+            await self._dock_viewport_window(
+                self._viewport_window_name("CAM_Front"),
+                PRIMARY_VIEWPORT_WINDOW,
+                ui.DockPosition.RIGHT,
+                2.0 / 3.0,
+            )
+            await self._dock_viewport_window(
+                self._viewport_window_name("CAM_B"),
+                self._viewport_window_name("CAM_Front"),
+                ui.DockPosition.RIGHT,
+                0.5,
+            )
+            # 下行：CAM_D | CAM_Back | CAM_C 在对应列下方拆分
+            await self._dock_viewport_window(
+                self._viewport_window_name("CAM_D"),
+                PRIMARY_VIEWPORT_WINDOW,
+                ui.DockPosition.BOTTOM,
+                0.5,
+            )
+            await self._dock_viewport_window(
+                self._viewport_window_name("CAM_Back"),
+                self._viewport_window_name("CAM_Front"),
+                ui.DockPosition.BOTTOM,
+                0.5,
+            )
+            await self._dock_viewport_window(
+                self._viewport_window_name("CAM_C"),
+                self._viewport_window_name("CAM_B"),
+                ui.DockPosition.BOTTOM,
+                0.5,
+            )
+
+        omni.kit.async_engine.run_coroutine(_dock_all())
+
+    def _should_use_viewport_grid(self) -> bool:
+        if self.viewport_camera != "CAM_A" or len(self.viewport_cameras_extra) < 5:
+            return False
+        grid_names = {name for row in VIEWPORT_GRID_ROWS for name in row}
+        rig_names = set(self.camera_rig.cameras_name)
+        return grid_names.issubset(rig_names)
+
+    def _setup_viewports_grid(self) -> tuple[str, List[str]]:
+        primary = self._set_viewport_camera()
+        extra_paths: List[str] = []
+        for row in VIEWPORT_GRID_ROWS:
+            for camera_name in row:
+                if camera_name == self.viewport_camera:
+                    continue
+                path = self._create_secondary_viewport(camera_name, docked=True)
+                if path:
+                    extra_paths.append(path)
+                    simulation_app.update()
+        self._schedule_viewport_grid_docking()
+        for _ in range(12):
+            simulation_app.update()
+        return primary, extra_paths
+
+    def _setup_viewports_legacy(self) -> tuple[str, List[str]]:
         primary = self._set_viewport_camera()
         extra_paths: List[str] = []
         seen = {self.viewport_camera.lower()}
@@ -214,6 +316,11 @@ class CameraRigTrajectoryRecorder(Node):
                 extra_paths.append(path)
                 simulation_app.update()
         return primary, extra_paths
+
+    def _setup_viewports(self) -> tuple[str, List[str]]:
+        if self._should_use_viewport_grid():
+            return self._setup_viewports_grid()
+        return self._setup_viewports_legacy()
 
     @staticmethod
     def _normalize_xy(vec: np.ndarray) -> np.ndarray:
@@ -250,8 +357,8 @@ class CameraRigTrajectoryRecorder(Node):
         lateral = float(msg.data[0])
         longitudinal = float(msg.data[1])
         dyaw = float(msg.data[2]) if len(msg.data) >= 3 else 0.0
-        # 与键盘语义对齐：a=左 d=右 w=前 s=后（rig 局部轴符号与 USD 一致时需取反）
-        dx, dy = self._teleop_delta_xy_to_world(-lateral, -longitudinal)
+        # 与键盘语义对齐：a=左 d=右 w=前 s=后
+        dx, dy = self._teleop_delta_xy_to_world(lateral, longitudinal)
         self.pose[0] += dx
         self.pose[1] += dy
         self.pose[5] += dyaw

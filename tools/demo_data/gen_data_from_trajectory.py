@@ -34,6 +34,10 @@ from loguru import logger
 import omni.replicator.core as rep
 from isaacsim.asset.gen.omap.bindings import _omap  # noqa: F401
 
+_ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if _ROOT_DIR not in sys.path:
+    sys.path.insert(0, _ROOT_DIR)
+
 from sdg_utils.usd import load_usd_file
 from sdg_utils.occupancy import (
     get_mesh_paths,
