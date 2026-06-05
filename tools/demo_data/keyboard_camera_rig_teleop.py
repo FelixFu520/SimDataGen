@@ -9,15 +9,14 @@
     a / d        : CameraRig 向左 / 向右
     w / s        : CameraRig 向前 / 向后
     z / c        : yaw 左 / 右旋转（每按一次 10°）
+    u / i        : CameraRig 上升 / 下降
     q / e        : 减小 / 增大步长
     b            : 切换 a/d、w/s 方向（再按恢复）
     j / k        : 开始 / 停止录制
     x            : 退出
 
-Z 轴固定为仿真/键盘设置的初始高度，不可键盘调整。
-
 发布:
-    /camera_rig/nudge      std_msgs/Float64MultiArray  [lateral, longitudinal, dyaw] 米、度
+    /camera_rig/nudge      std_msgs/Float64MultiArray  [lateral, longitudinal, dyaw, dz] 米、度
     /camera_rig/init_pose  std_msgs/Float64MultiArray  6 元组位姿
     /camera_rig/record     std_msgs/String             start / stop
 
@@ -47,11 +46,11 @@ HELP_LINES = [
     "  a / d     向左 / 向右",
     "  w / s     向前 / 向后",
     "  z / c     yaw  左 / 右   （每按一次 10°）",
+    "  u / i     上升 / 下降",
     "  q / e     步长  减小 / 增大",
     "  b         切换 a/d、w/s 方向（再按恢复）",
     "  j / k     开始录制 / 停止并保存",
     "  x         退出",
-    "  Z 固定为初始高度，不随按键改变",
     "================================================",
 ]
 
@@ -134,10 +133,14 @@ class KeyboardTeleop(Node):
         self._flash(f"初始位姿 z={pose[2]:.2f}")
 
     def _publish_nudge(
-        self, lateral: float, longitudinal: float, dyaw: float = 0.0
+        self,
+        lateral: float,
+        longitudinal: float,
+        dyaw: float = 0.0,
+        dz: float = 0.0,
     ) -> None:
         msg = Float64MultiArray()
-        msg.data = [float(lateral), float(longitudinal), float(dyaw)]
+        msg.data = [float(lateral), float(longitudinal), float(dyaw), float(dz)]
         self.pub_nudge.publish(msg)
 
     def _flash(self, text: str, sec: float = 2.0) -> None:
@@ -170,6 +173,12 @@ class KeyboardTeleop(Node):
         self._publish_nudge(0.0, 0.0, dyaw)
         self._flash(f"yaw {dyaw:+.0f}°")
 
+    def _nudge_height(self, dz_sign: int) -> None:
+        dz = float(dz_sign) * self.step_size
+        self._publish_nudge(0.0, 0.0, 0.0, dz)
+        label = "上升" if dz_sign > 0 else "下降"
+        self._flash(f"{label} {abs(dz):.2f} m")
+
     def _format_status(self) -> str:
         pose_s = ""
         if self.rig_pose is not None:
@@ -201,6 +210,10 @@ class KeyboardTeleop(Node):
             self._nudge_yaw(1)
         elif key in ("c", "C"):
             self._nudge_yaw(-1)
+        elif key in ("u", "U"):
+            self._nudge_height(1)
+        elif key in ("i", "I"):
+            self._nudge_height(-1)
         elif key in ("q", "Q"):
             self.step_size = max(self.min_step, self.step_size - self.step_step)
             self._flash(f"步长 -> {self.step_size:.2f} m")

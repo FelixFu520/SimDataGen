@@ -81,12 +81,12 @@ test -f assets/cameras/oak_camera_4lut_2H30YA.usd && echo camera OK
 
 | 话题 | 类型 | 方向 | 含义 |
 |------|------|------|------|
-| `/camera_rig/nudge` | `std_msgs/Float64MultiArray` | 键盘 → 仿真 | `[lateral, longitudinal, dyaw]`：左右/前后（米，相对 **CameraRig 自身**）、yaw（度） |
+| `/camera_rig/nudge` | `std_msgs/Float64MultiArray` | 键盘 → 仿真 | `[lateral, longitudinal, dyaw, dz]`：左右/前后（米，相对 **CameraRig 自身**）、yaw（度）、高度（米，世界 Z） |
 | `/camera_rig/record` | `std_msgs/String` | 键盘 → 仿真 | `"start"` / `"stop"` |
 | `/camera_rig/init_pose` | `std_msgs/Float64MultiArray` | 键盘 → 仿真 | 6 元组：`x,y,z,roll,pitch,yaw`（米、度） |
 | `/camera_rig/state` | `std_msgs/Float64MultiArray` | 仿真 → 键盘 | 当前 rig 位姿 |
 
-仿真端按 rig 当前位姿取**右轴（局部 -Y）**与**前轴（局部 +X）**，将左右/前后变换到世界 XY；**Z 固定**。任意 yaw 下 `a` 恒为左、`d` 右、`w` 前、`s` 后。`z`/`c` 每次 yaw **10°**。
+仿真端按 rig 当前位姿取**右轴（局部 -Y）**与**前轴（局部 +X）**，将左右/前后变换到世界 XY。任意 yaw 下 `a` 恒为左、`d` 右、`w` 前、`s` 后。`u`/`i` 按当前步长升降 Z；`z`/`c` 每次 yaw **10°**。
 
 **默认视口相机为 `CAM_A`**（与采图一致的鱼眼画面）。启动后 Isaac 主视口应显示 `CAM_A`。步进时画面随 rig 上的相机一起移动（脚本**不会**再改写传感器外参，避免黑屏）。
 
@@ -117,14 +117,16 @@ test -f assets/cameras/oak_camera_4lut_2H30YA.usd && echo camera OK
 | 红点 + 红箭头 | CameraRig 当前位置与 yaw 朝向 |
 | 绿点 | 录制中的轨迹（按 `j` 后） |
 
-键盘 `a/d/w/s/z/c` 移动 rig 时，地图上的红点会**实时更新**。首次启动会计算 3D occupancy（较慢），结果缓存到 `output_dir/occupancy/`；再次运行同一场景会直接加载缓存。
+键盘 `a/d/w/s/u/i/z/c` 移动 rig 时，地图上的红点会**实时更新**；`u`/`i` 改变 Z 后，面板会**切换到对应高度的横截面**（首次生成并缓存，再次切回直接加载）。
+
+首次启动会计算 3D occupancy（较慢），结果缓存到 `output_dir/occupancy/`；再次运行同一场景会直接加载 3D 缓存。各高度横截面保存为 `slice_z{Z}.png` + `slice_z{Z}.json`（如 `slice_z1.50.png`），已存在则跳过生成。
 
 | 参数 | 说明 |
 |------|------|
 | `--occupancy-resolution` | 体素分辨率（米），默认 `0.1` |
 | `--no-occupancy-map` | 禁用地图面板与 occupancy 计算 |
 
-横截面 PNG 保存为 `output_dir/occupancy/slice_z{Z}.png`（如 `slice_z1.50.png`）。
+横截面缓存为 `output_dir/occupancy/slice_z{Z}.png` 与同名 `.json`（元数据含 origin、resolution 等）。
 
 ### CameraRig 初始位姿参数
 
@@ -198,14 +200,13 @@ python3 tools/demo_data/keyboard_camera_rig_teleop.py --step-size 0.1
 | `a` / `d` | CameraRig **向左 / 向右**（每按一步） |
 | `w` / `s` | CameraRig **向前 / 向后**（每按一步） |
 | `z` / `c` | yaw **左 / 右**（每按一次 **10°**） |
+| `u` / `i` | CameraRig **上升 / 下降**（每按一步，步长同 `q`/`e`） |
 | `q` / `e` | 步长 **减小 / 增大** |
 | `b` | 切换 `a`/`d`、`w`/`s` 方向（再按恢复） |
 | `j` / `k` | **开始**录制 / **停止**并保存 |
 | `x` | 退出键盘节点 |
 
-Z 轴始终为启动仿真时 `--init_pose` 里的高度，键盘不能改 Z。
-
-建议流程：`a`/`d`/`w`/`s`/`z`/`c` 在 **rig 自身坐标系**下预览（**不入轨**）→ `j` 开始录制 → 继续步进/转向（终端 A **实时打印**每个轨迹点）→ `k` 保存。
+建议流程：`a`/`d`/`w`/`s`/`u`/`i`/`z`/`c` 在 **rig 自身坐标系**下预览（**不入轨**）→ `j` 开始录制 → 继续步进/升降/转向（终端 A **实时打印**每个轨迹点）→ `k` 保存。
 
 终端 A（仿真）会打印类似：
 
