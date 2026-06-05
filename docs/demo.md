@@ -242,12 +242,11 @@ python3 tools/demo_data/keyboard_camera_rig_teleop.py \
 ```bash
 cd /home/fufa/projects2026/SimDataGen
 
-# 全量 1079 点较慢，可先 --point_stride 5 试跑
 ./tools/demo_data/run_gen_data_from_trajectory.sh \
   --scene_usd_url /home/fufa/projects2026/SimDataGen/asset_extern/kujiale/kujiale_0030/kujiale_0030.usda \
   --camera_usd_url /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA_regular.usd \
   --trajectory_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory/kujiale_0030 \
-  --trajectory_tags 1 \
+  --trajectory_tags 0 \
   --output_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory_data/kujiale_0030 \
   --point_stride 1
 ```
@@ -260,3 +259,12 @@ cd /home/fufa/projects2026/SimDataGen
 | `--max_retry_attempts` | 默认 `0`，黑图时不旋转 yaw，避免偏离录制朝向 |
 
 ---
+### 数据投影
+```
+./scripts/batch_vis_to_mcap.sh /home/fufa/projects2026/SimDataGen/workdir/trajectory_data/kujiale_0030
+```
+
+### 拼接成视频
+```
+./app/python.sh tools/check_data/make_rgb_depth_video.py  --input workdir/trajectory_data/kujiale_0030/
+```

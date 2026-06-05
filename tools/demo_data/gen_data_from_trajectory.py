@@ -51,7 +51,10 @@ from sdg_utils.misc import _fmt_duration, resolve_camera_usd_path
 RENDER_COUNT = 5
 
 parser = argparse.ArgumentParser(
-    description="按录制轨迹 (rig_poses_*.npy) 采集 RGB / 深度 / 语义，输出布局与 gen_data.py 一致。"
+    description=(
+        "按录制轨迹 (rig_poses_*.npy) 采集 RGB / 深度 / 语义；"
+        "输出含 path/paths.npy，与 gen_data.py / batch_vis_to_mcap.sh 目录布局一致。"
+    )
 )
 parser.add_argument("--seed", type=int, default=4)
 parser.add_argument("--scene_usd_url", type=str, required=True, help="场景 USD，须与录制轨迹时一致")
@@ -195,6 +198,31 @@ def copy_trajectory_sources(trajectory_dir: str, entries: List[Tuple[int, str]])
             shutil.copy2(meta_src, os.path.join(out_dir, f"trajectory_{tag_s}.json"))
 
 
+def build_paths_npy(trajectories: List[Tuple[int, np.ndarray]]) -> np.ndarray:
+    """构建 path/paths.npy: (num_paths, num_points, 3)，与 gen_data.py / batch_vis_to_mcap 一致。"""
+    if not trajectories:
+        raise ValueError("无轨迹段，无法生成 paths.npy")
+    max_n = max(len(poses) for _, poses in trajectories)
+    paths_arr = np.zeros((len(trajectories), max_n, 3), dtype=np.float64)
+    for row, (_, poses) in enumerate(trajectories):
+        n = len(poses)
+        paths_arr[row, :n, :] = poses[:, :3]
+        if n < max_n:
+            paths_arr[row, n:, :] = poses[-1, :3]
+    return paths_arr
+
+
+def write_path_outputs(trajectories: List[Tuple[int, np.ndarray]]) -> str:
+    """写入 path/paths.npy，供 project_cloud / path_vis_to_mcap / batch_vis_to_mcap 使用。"""
+    path_dir = os.path.join(args.output_dir, "path")
+    os.makedirs(path_dir, exist_ok=True)
+    paths_arr = build_paths_npy(trajectories)
+    paths_npy = os.path.join(path_dir, "paths.npy")
+    np.save(paths_npy, paths_arr)
+    logger.info(f"已写入 {paths_npy}, 形状 {paths_arr.shape}")
+    return paths_npy
+
+
 if __name__ == "__main__":
     logger.info(f"args: {args}")
     logger.info(f"RENDER_COUNT: {RENDER_COUNT}")
@@ -211,6 +239,7 @@ if __name__ == "__main__":
         logger.info(f"轨迹段 {tag:04d}: {rig_path} -> {len(poses)} 点")
 
     copy_trajectory_sources(args.trajectory_dir, rig_entries)
+    write_path_outputs(trajectories)
 
     # ============ 步骤 1: 加载场景 ============
     logger.info(f"[步骤1][开始] 加载场景 {args.scene_usd_url}")
@@ -271,19 +300,21 @@ if __name__ == "__main__":
 
     cameras_name = camera_rig.get_cameras_name()
     total_points = sum(len(p) for _, p in trajectories)
+    # path_idx: 0 起标，与 gen_data.py / batch_vis_to_mcap 帧命名一致；path_tag 为源 rig_poses_XXXX 编号
     valid_points: List[Tuple[int, int, float, float, float, float, float, float]] = []
 
     logger.info("[步骤4][遍1][开始] RGB + 内外参")
     pass1_start = time.perf_counter()
     point_counter = 0
-    for path_tag, rig_poses in trajectories:
+    for path_idx, (path_tag, rig_poses) in enumerate(trajectories):
         for point_idx, pose in enumerate(rig_poses):
             point_counter += 1
             x, y, z, roll, pitch, yaw = [float(v) for v in pose]
             point_start = time.perf_counter()
             logger.info(
-                f"\n====> [遍1/RGB] {path_tag:04d}_{point_idx:04d} "
-                f"[{point_counter}/{total_points}] pose=({x:.3f},{y:.3f},{z:.3f},{roll:.1f},{pitch:.1f},{yaw:.1f}) <===="
+                f"\n====> [遍1/RGB] {path_idx:04d}_{point_idx:04d} "
+                f"(源 tag={path_tag:04d}) [{point_counter}/{total_points}] "
+                f"pose=({x:.3f},{y:.3f},{z:.3f},{roll:.1f},{pitch:.1f},{yaw:.1f}) <===="
             )
 
             retry_count = 0
@@ -299,7 +330,7 @@ if __name__ == "__main__":
 
                 cameras_rgb = camera_rig.get_cameras_rgb()
                 camera_rig.save_cameras_rgb(
-                    save_rgb_discard_dir, path_idx=path_tag, point_idx=point_idx
+                    save_rgb_discard_dir, path_idx=path_idx, point_idx=point_idx
                 )
 
                 if validate_rgb(cameras_rgb):
@@ -309,7 +340,7 @@ if __name__ == "__main__":
                 retry_count += 1
                 if retry_count < max_attempts:
                     logger.warning(
-                        f"有效性预检失败 {path_tag:04d}-{point_idx:04d}, "
+                        f"有效性预检失败 {path_idx:04d}-{point_idx:04d} (源 tag={path_tag:04d}), "
                         f"yaw {cur_yaw:.1f} -> {cur_yaw + args.yaw_increment:.1f}"
                     )
                     cur_yaw += args.yaw_increment
@@ -318,11 +349,12 @@ if __name__ == "__main__":
 
             if not valid_image:
                 logger.warning(
-                    f"跳过 {path_tag:04d}-{point_idx:04d}, 预检失败 (重试 {retry_count} 次)"
+                    f"跳过 {path_idx:04d}-{point_idx:04d} (源 tag={path_tag:04d}), "
+                    f"预检失败 (重试 {retry_count} 次)"
                 )
                 continue
 
-            camera_rig.save_cameras_rgb(save_rgb_dir, path_idx=path_tag, point_idx=point_idx)
+            camera_rig.save_cameras_rgb(save_rgb_dir, path_idx=path_idx, point_idx=point_idx)
 
             common_dict = {}
             for camera_name in cameras_name:
@@ -337,12 +369,12 @@ if __name__ == "__main__":
                     },
                 }
             np.save(
-                os.path.join(save_common_dir, f"{path_tag:04d}_{point_idx:04d}.npy"),
+                os.path.join(save_common_dir, f"{path_idx:04d}_{point_idx:04d}.npy"),
                 common_dict,
                 allow_pickle=True,
             )
             valid_points.append(
-                (path_tag, point_idx, x, y, z, cur_roll, cur_pitch, cur_yaw)
+                (path_idx, point_idx, x, y, z, cur_roll, cur_pitch, cur_yaw)
             )
             logger.info(
                 f"[步骤4][遍1] 点结束 耗时 {_fmt_duration(time.perf_counter() - point_start)}"
@@ -364,19 +396,21 @@ if __name__ == "__main__":
     logger.info(f"[步骤4][遍2][开始] 深度+语义, {len(valid_points)} 点")
     pass2_start = time.perf_counter()
     try:
-        for idx, (path_tag, point_idx, x, y, z, roll, pitch, yaw) in enumerate(
+        for idx, (path_idx, point_idx, x, y, z, roll, pitch, yaw) in enumerate(
             valid_points, start=1
         ):
-            logger.info(f"\n====> [遍2] {path_tag:04d}_{point_idx:04d} [{idx}/{len(valid_points)}] <====")
+            logger.info(
+                f"\n====> [遍2] {path_idx:04d}_{point_idx:04d} [{idx}/{len(valid_points)}] <===="
+            )
             camera_rig.set_pose(x, y, z, roll, pitch, yaw)
             for _ in range(RENDER_COUNT):
                 world.step(render=True)
                 simulation_app.update()
             camera_rig.save_cameras_depth(
-                save_depth_dir, path_idx=path_tag, point_idx=point_idx
+                save_depth_dir, path_idx=path_idx, point_idx=point_idx
             )
             camera_rig.save_cameras_semantic(
-                save_semantic_dir, path_idx=path_tag, point_idx=point_idx
+                save_semantic_dir, path_idx=path_idx, point_idx=point_idx
             )
     finally:
         logger.info("[步骤4][恢复材质][开始]")

@@ -47,11 +47,11 @@ CAMERA_GRID_POS: dict[str, tuple[int, int]] = {
     "CAM_B": (0, 1),
     "CAM_C": (1, 1),
     "CAM_D": (1, 0),
-    # "CAM_Front": (2, 0),
-    # "CAM_Back": (2, 1),
+    "CAM_Front": (2, 0),
+    "CAM_Back": (2, 1),
 }
-# GRID_ROWS = 3
-GRID_ROWS = 2
+GRID_ROWS = 3
+# GRID_ROWS = 2
 GRID_COLS = 2
 
 _IMREAD_REDUCED = {
