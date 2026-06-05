@@ -106,6 +106,26 @@ test -f assets/cameras/oak_camera_4lut_2H30YA.usd && echo camera OK
 
 `--viewport-cameras` 的参数顺序不影响网格位置。若只开少量额外视口，则回退为独立浮动窗口。也可在 GUI 中 **Window → Viewport → New Viewport Window** 手动添加。`--viewport-camera-2 CAM_Back` 仍可用（等价于只多开一个视口）。
 
+### Occupancy 横截面地图（CameraRig 位置）
+
+启动录制脚本时，会按 `--init_pose` 中的 **Z 高度**（如 `1.5`）从场景 occupancy 提取 **水平横截面**，并在 Isaac Sim 右侧停靠面板 **「CameraRig - Occupancy Map」**：
+
+| 像素值 | 含义 |
+|--------|------|
+| `0`（黑） | 占据（墙体、家具等） |
+| `255`（白） | 可通行 |
+| 红点 + 红箭头 | CameraRig 当前位置与 yaw 朝向 |
+| 绿点 | 录制中的轨迹（按 `j` 后） |
+
+键盘 `a/d/w/s/z/c` 移动 rig 时，地图上的红点会**实时更新**。首次启动会计算 3D occupancy（较慢），结果缓存到 `output_dir/occupancy/`；再次运行同一场景会直接加载缓存。
+
+| 参数 | 说明 |
+|------|------|
+| `--occupancy-resolution` | 体素分辨率（米），默认 `0.1` |
+| `--no-occupancy-map` | 禁用地图面板与 occupancy 计算 |
+
+横截面 PNG 保存为 `output_dir/occupancy/slice_z{Z}.png`（如 `slice_z1.50.png`）。
+
 ### CameraRig 初始位姿参数
 
 **仿真端**（推荐，场景加载时即生效）：
@@ -147,6 +167,7 @@ cd /home/fufa/projects2026/SimDataGen
   --camera_usd /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA_regular.usd \
   --output_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory/kujiale_0030 \
   --init_pose 1 1 1.5 0 0 0 \
+  --occupancy-resolution 0.1 \
   --viewport-camera CAM_A \
   --viewport-cameras CAM_B CAM_C CAM_D CAM_Front CAM_Back
 ```
@@ -155,7 +176,8 @@ cd /home/fufa/projects2026/SimDataGen
 
 - **终端 A 不要** `source /opt/ros/humble/setup.bash`（若 `.bashrc` 已自动 source，请新开干净 shell 或 `unset PYTHONPATH` 后再跑）。系统 ROS 的 Python 3.10 `rclpy` 会与 Isaac Sim 3.11 冲突，导致 `rclpy._rclpy_pybind11` 加载失败；`run_record_camera_rig_trajectory.sh` 会自动改用扩展内置的 `humble/rclpy`。
 - 主视口为 `CAM_A`；`--viewport-cameras` 会在主窗口内停靠 2×3 网格，显示鱼眼 A/B/C/D 与针孔 Front/Back（共 6 路预览）。
-- 初始位姿见上文「CameraRig 初始位姿参数」；欧拉角为 XYZ 顺序（度），与 `CameraRig.set_pose` 一致。
+- 右侧会显示 **Occupancy 横截面地图**，红点标记 CameraRig 在 `z=1.5` 平面上的位置；键盘移动时实时更新（详见上文「Occupancy 横截面地图」）。
+- 初始位姿见上文「CameraRig 初始位姿参数」；欧拉角为 XYZ 顺序（度），与 `CameraRig.set_pose` 一致。`--init_pose` 的 Z 同时决定横截面高度。
 - 会弹出 Isaac Sim 窗口；场景加载完成后日志提示等待 ROS2 指令。
 - 按 `Ctrl+C` 结束仿真（未按 `k` 的录制内容不会自动保存）。
 
@@ -222,19 +244,11 @@ cd /home/fufa/projects2026/SimDataGen
 
 # 全量 1079 点较慢，可先 --point_stride 5 试跑
 ./tools/demo_data/run_gen_data_from_trajectory.sh \
-  --scene_usd_url /home/fufa/projects2026/SimDataGen/asset_extern/kujiale/kujiale_0004/kujiale_0004.usda \
-  --camera_usd_url /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut.usd \
-  --trajectory_dir /home/fufa/projects2026/SimDataGen/workdir/demo_trajectory/kujiale_0004 \
-  --trajectory_tags 1 \
-  --output_dir /home/fufa/projects2026/SimDataGen/workdir/kujiale_0004 \
-  --point_stride 1
-
-./tools/demo_data/run_gen_data_from_trajectory.sh \
   --scene_usd_url /home/fufa/projects2026/SimDataGen/asset_extern/kujiale/kujiale_0030/kujiale_0030.usda \
-  --camera_usd_url /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut.usd \
-  --trajectory_dir /home/fufa/projects2026/SimDataGen/workdir/demo_trajectory/kujiale_0030 \
+  --camera_usd_url /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA_regular.usd \
+  --trajectory_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory/kujiale_0030 \
   --trajectory_tags 1 \
-  --output_dir /home/fufa/projects2026/SimDataGen/workdir/kujiale_0030 \
+  --output_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory_data/kujiale_0030 \
   --point_stride 1
 ```
 

@@ -49,6 +49,7 @@ settings = carb.settings.get_settings()
 settings.set("/rtx/verifyDriverVersion/enabled", False)
 
 enable_extension("isaacsim.ros2.bridge")
+enable_extension("isaacsim.asset.gen.omap")
 simulation_app.update()
 
 try:
@@ -69,9 +70,20 @@ ROOT_DIR = _ROOT_DIR
 
 from pxr import UsdGeom
 
+from isaacsim.asset.gen.omap.bindings import _omap  # noqa: F401 — 须与 enable_extension 配合
+
 from sdg_utils.camera import CameraRig, _gf_matrix_to_np
+from sdg_utils.occupancy import (
+    OccSlice2DMeta,
+    build_occ_slice_2d,
+    get_mesh_paths,
+    get_semantic_occupancy,
+    save_occ_slice_2d_png,
+    save_semantic_occupancy_ply,
+)
 from sdg_utils.usd import load_usd_file
 from sdg_utils.trajectory import save_path_ply
+from tools.demo_data.occupancy_map_panel import OccupancyMapPanel
 
 # Isaac 编辑器默认透视相机，勿用 CameraRig 上的 CAM_* 作为视口相机
 VIEWPORT_OBSERVER_CAMERA = "/OmniverseKit_Persp"
@@ -96,6 +108,7 @@ class CameraRigTrajectoryRecorder(Node):
         follow_viewport: bool = True,
         viewport_camera: str = "CAM_Front",
         viewport_cameras_extra: Optional[List[str]] = None,
+        occ_map_panel: Optional[OccupancyMapPanel] = None,
     ):
         super().__init__("camera_rig_trajectory_recorder")
         self.get_logger().set_level(rclpy.logging.LoggingSeverity.WARN)
@@ -113,6 +126,7 @@ class CameraRigTrajectoryRecorder(Node):
         self.follow_viewport = bool(follow_viewport)
         self.viewport_camera = (viewport_camera or "CAM_A").strip()
         self.viewport_cameras_extra = list(viewport_cameras_extra or [])
+        self.occ_map_panel = occ_map_panel
 
         self.create_subscription(Float64MultiArray, "/camera_rig/nudge", self._on_nudge, 10)
         self.create_subscription(String, "/camera_rig/record", self._on_record, 10)
@@ -121,6 +135,13 @@ class CameraRigTrajectoryRecorder(Node):
 
         self._apply_pose()
         self._publish_state()
+        self._update_occ_map_panel()
+
+    def _update_occ_map_panel(self) -> None:
+        if self.occ_map_panel is None:
+            return
+        recorded = self.recorded if self.recording else []
+        self.occ_map_panel.update_pose(self.pose, recorded=recorded)
 
     def _is_rig_sensor_camera(self, camera_path: str) -> bool:
         rig = self.camera_rig.rig_prim_path.rstrip("/")
@@ -368,6 +389,7 @@ class CameraRigTrajectoryRecorder(Node):
         self._append_pose_if_recording()
         self._print_move_log(dx, dy, dyaw)
         self._publish_state()
+        self._update_occ_map_panel()
 
     def _on_init_pose(self, msg: Float64MultiArray) -> None:
         if len(msg.data) < 6:
@@ -377,12 +399,16 @@ class CameraRigTrajectoryRecorder(Node):
         self.fixed_z = float(self.pose[2])
         self._apply_pose()
         self._print_move_log(0.0, 0.0, 0.0, prefix="init_pose")
+        self._publish_state()
+        self._update_occ_map_panel()
 
     def _on_record(self, msg: String) -> None:
         cmd = (msg.data or "").strip().lower()
         if cmd == "start":
             self.recording = True
             self.recorded = [self.pose.copy()]
+            if self.occ_map_panel is not None:
+                self.occ_map_panel.set_recording(True)
             print(
                 f"\n>>> 开始录制 轨迹 #{self.path_index:04d} "
                 f"(j=录制中, a/d/w/s/z/c=步进/转向, k=保存; 未按 j 前的移动不入轨)",
@@ -395,6 +421,8 @@ class CameraRigTrajectoryRecorder(Node):
             else:
                 print(">>> 未在录制中，无轨迹可保存（请先按 j）", flush=True)
             self.recording = False
+            if self.occ_map_panel is not None:
+                self.occ_map_panel.set_recording(False)
 
     def _apply_pose(self) -> None:
         self.pose[2] = self.fixed_z
@@ -476,6 +504,7 @@ class CameraRigTrajectoryRecorder(Node):
         if self.recorded and np.allclose(self.recorded[-1], self.pose, atol=1e-5):
             return
         self.recorded.append(self.pose.copy())
+        self._update_occ_map_panel()
 
     def _save_trajectory(self) -> None:
         if len(self.recorded) < 2:
@@ -586,6 +615,17 @@ def parse_args() -> argparse.Namespace:
         metavar="NAME",
         help="(兼容) 等同 --viewport-cameras 的单个相机",
     )
+    p.add_argument(
+        "--occupancy-resolution",
+        type=float,
+        default=0.1,
+        help="occupancy 体素分辨率 (米)，用于生成 z 横截面地图",
+    )
+    p.add_argument(
+        "--no-occupancy-map",
+        action="store_true",
+        help="不生成 occupancy 地图面板",
+    )
     return p.parse_args()
 
 
@@ -603,6 +643,52 @@ def resolve_viewport_cameras_extra(args: argparse.Namespace) -> List[str]:
             seen.add(key)
             deduped.append(name)
     return deduped
+
+
+def load_or_compute_occupancy(
+    stage,
+    output_dir: str,
+    resolution: float,
+    slice_z: float,
+) -> OccSlice2DMeta:
+    """加载或计算 3D occupancy，并生成 z=slice_z 横截面 2D 地图。"""
+    occ_dir = os.path.join(output_dir, "occupancy")
+    os.makedirs(occ_dir, exist_ok=True)
+    occupied_npy = os.path.join(occ_dir, "occupied_positions.npy")
+    free_npy = os.path.join(occ_dir, "free_positions.npy")
+    slice_png = os.path.join(occ_dir, f"slice_z{slice_z:.2f}.png")
+
+    if os.path.isfile(occupied_npy) and os.path.isfile(free_npy):
+        logger.info(f"命中 occupancy 缓存: {occ_dir}")
+        occupied_data = np.load(occupied_npy)
+        free_data = np.load(free_npy)
+    else:
+        logger.info("计算 occupancy（首次较慢，结果会缓存到 output_dir/occupancy/）")
+        mesh_paths = get_mesh_paths(stage)
+        logger.info(f"物理碰撞 mesh 数量: {len(mesh_paths)}")
+        semantic_occupancy = get_semantic_occupancy(
+            stage,
+            resolution=resolution,
+            mesh_paths=mesh_paths,
+        )
+        occupied_data = semantic_occupancy[semantic_occupancy[:, 3] != 0]
+        free_data = semantic_occupancy[semantic_occupancy[:, 3] == 0]
+        np.save(occupied_npy, occupied_data)
+        np.save(free_npy, free_data)
+        save_semantic_occupancy_ply(
+            occupied_data,
+            os.path.join(occ_dir, "occupied_positions.ply"),
+        )
+        logger.info(
+            f"occupancy 已缓存: occupied={occupied_data.shape[0]}, free={free_data.shape[0]}"
+        )
+
+    meta = build_occ_slice_2d(occupied_data, free_data, slice_z=slice_z, resolution=resolution)
+    save_occ_slice_2d_png(meta, slice_png)
+    logger.info(
+        f"z={slice_z:.2f} 横截面地图: {meta['width']}x{meta['height']} px -> {slice_png}"
+    )
+    return meta
 
 
 def resolve_init_pose(args: argparse.Namespace) -> list[float]:
@@ -635,6 +721,21 @@ def main() -> None:
         sys.exit(1)
 
     world, stage = load_usd_file(scene_usd)
+    init_pose = resolve_init_pose(args)
+
+    occ_map_panel: Optional[OccupancyMapPanel] = None
+    if not args.no_occupancy_map:
+        world.reset()
+        for _ in range(3):
+            simulation_app.update()
+        occ_meta = load_or_compute_occupancy(
+            stage,
+            output_dir,
+            resolution=args.occupancy_resolution,
+            slice_z=init_pose[2],
+        )
+        occ_map_panel = OccupancyMapPanel(occ_meta, init_pose)
+
     camera_rig = CameraRig(
         camera_usd_path=camera_usd,
         world=world,
@@ -647,14 +748,17 @@ def main() -> None:
         world=world,
         camera_rig=camera_rig,
         output_dir=output_dir,
-        init_pose=resolve_init_pose(args),
+        init_pose=init_pose,
         follow_viewport=args.follow_viewport,
         viewport_camera=args.viewport_camera,
         viewport_cameras_extra=resolve_viewport_cameras_extra(args),
+        occ_map_panel=occ_map_panel,
     )
     try:
         recorder.run()
     finally:
+        if occ_map_panel is not None:
+            occ_map_panel.destroy()
         recorder.destroy_node()
         rclpy.shutdown()
         simulation_app.close()
