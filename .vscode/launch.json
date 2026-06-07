@@ -40,8 +40,8 @@
             "args": [
                 "--seed", "0",
                 "--scene_usd_url", "/home/fufa/projects2026/SimDataGen/asset_extern/TaoBao03/108_Bazaar/Demo.usd",
-                "--camera_usd_url", "/home/fufa/projects2026/SimDataGen/assets/cameras/ZED_X.usdc",
-                "--output_dir", "/home/fufa/projects2026/SimDataGen/workdir/108_Bazaar_ZEDX",
+                "--camera_usd_url", "oak_camera_4lut_2H30YA",
+                "--output_dir", "/home/fufa/projects2026/SimDataGen/workdir/108_Bazaar",
                 "--occupancy_resolution", "0.25",
                 "--num_points", "60",
                 "--num_paths", "1",

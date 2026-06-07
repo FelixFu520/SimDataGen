@@ -20,7 +20,7 @@ STEP_SIZE_XY=$OCCUPANCY_RESOLUTION
 STEP_SIZE_Z=$OCCUPANCY_RESOLUTION
 MAX_DZ_PER_STEP=$OCCUPANCY_RESOLUTION
 MIN_PATH_COMPACT_WINDOW=10
-MIN_PATH_EXTENT=$(awk "BEGIN{print $MIN_PATH_COMPACT_WINDOW * $OCCUPANCY_RESOLUTION / 2}")
+MIN_PATH_EXTENT=$(awk "BEGIN{print $MIN_PATH_COMPACT_WINDOW * $OCCUPANCY_RESOLUTION / 4}")
 MAX_PATH_GENERATION_ATTEMPTS=100000
 
 echo "SEED_ENV: $SEED_ENV"
@@ -71,6 +71,7 @@ ln -s ${PROJECT_DIR}/../5.1_asset /root/5.1_asset
 --/renderer/multiGpu/enabled=false
 
 # 可视化数据
+./app/python.sh -m pip install OpenEXR==3.4.9
 ./app/python.sh project_cloud.py \
 --data_dir $OUTPUT_DIR \
 --output_dir $OUTPUT_DIR/vis \

@@ -33,9 +33,11 @@ FAMILY=${13}
 GPU_NUMBER=${14:-1}
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-SCRIPT_DIR="${PROJECT_DIR}/scripts"
+# echo "PROJECT_DIR($0): ${PROJECT_DIR}"
+SCRIPT_DIR="${PROJECT_DIR}/scripts/scripts"
+# echo "SCRIPT_DIR($0): ${SCRIPT_DIR}"
 TASK_SCRIPT="${SCRIPT_DIR}/${TASK_NAME}.sh"
-
+# echo "TASK_SCRIPT($0): ${TASK_SCRIPT}"
 if [[ ! -f "${TASK_SCRIPT}" ]]; then
   echo "错误: 未找到任务脚本 ${TASK_SCRIPT}" >&2
   exit 1

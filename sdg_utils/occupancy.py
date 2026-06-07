@@ -1,6 +1,11 @@
-from typing import List, Dict
+from typing import Dict, List, Optional, Tuple, TypedDict
+
+import json
+import os
+
 import numpy as np
 from loguru import logger
+from PIL import Image, ImageDraw
 from plyfile import PlyData, PlyElement
 
 import omni.physx
@@ -307,6 +312,227 @@ def get_semantic_occupancy(stage: Usd.Stage, resolution: float = 0.05,
             logger.info(f"场景 free positions: {len(pts_free_all)} 个点, 语义 ID: 0")
 
     return np.vstack(all_semantic_points) if all_semantic_points else np.array([])
+
+
+class OccSlice2DMeta(TypedDict):
+    """z 横截面 2D occupancy 元数据。image 行 0 为图像顶部（世界 +Y 侧）。"""
+
+    image: np.ndarray
+    origin: Tuple[float, float]
+    resolution: float
+    slice_z: float
+    width: int
+    height: int
+
+
+def build_occ_slice_2d(
+    occupied_xyz: np.ndarray,
+    free_xyz: np.ndarray,
+    slice_z: float,
+    resolution: float = 0.1,
+    padding: int = 2,
+) -> OccSlice2DMeta:
+    """从 3D occupancy 点云提取 z=slice_z 横截面 2D 栅格。
+
+    占据体素为 0（黑），可通行体素为 255（白）。同一栅格既有占据又有空闲时，占据优先。
+    """
+    occ3 = occupied_xyz[:, :3] if len(occupied_xyz) else np.zeros((0, 3))
+    free3 = free_xyz[:, :3] if len(free_xyz) else np.zeros((0, 3))
+    half = resolution * 0.5
+
+    occ_mask = np.abs(occ3[:, 2] - slice_z) <= half if len(occ3) else np.zeros(0, dtype=bool)
+    free_mask = np.abs(free3[:, 2] - slice_z) <= half if len(free3) else np.zeros(0, dtype=bool)
+    occ_slice = occ3[occ_mask]
+    free_slice = free3[free_mask]
+
+    if len(occ_slice) == 0 and len(free_slice) == 0:
+        occ_mask = np.abs(occ3[:, 2] - slice_z) <= resolution if len(occ3) else np.zeros(0, dtype=bool)
+        free_mask = np.abs(free3[:, 2] - slice_z) <= resolution if len(free3) else np.zeros(0, dtype=bool)
+        occ_slice = occ3[occ_mask]
+        free_slice = free3[free_mask]
+
+    if len(occ_slice) + len(free_slice) == 0:
+        raise ValueError(
+            f"z={slice_z} 横截面无 occupancy 点，请检查 slice_z 或 --occupancy-resolution"
+        )
+
+    all_xy = np.vstack([occ_slice[:, :2], free_slice[:, :2]])
+    xy_min = all_xy.min(axis=0)
+    xy_max = all_xy.max(axis=0)
+
+    nx = int(np.ceil((xy_max[0] - xy_min[0]) / resolution)) + 1 + 2 * padding
+    ny = int(np.ceil((xy_max[1] - xy_min[1]) / resolution)) + 1 + 2 * padding
+    origin_x = float(xy_min[0] - padding * resolution)
+    origin_y = float(xy_min[1] - padding * resolution)
+
+    grid = np.full((ny, nx), 255, dtype=np.uint8)
+
+    def _world_to_grid(xy: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        ix = np.round((xy[:, 0] - origin_x) / resolution).astype(np.int64)
+        iy_world = np.round((xy[:, 1] - origin_y) / resolution).astype(np.int64)
+        iy = (ny - 1) - iy_world
+        return ix, iy
+
+    if len(free_slice):
+        fx, fy = _world_to_grid(free_slice[:, :2])
+        valid = (fx >= 0) & (fx < nx) & (fy >= 0) & (fy < ny)
+        grid[fy[valid], fx[valid]] = 255
+
+    if len(occ_slice):
+        ox, oy = _world_to_grid(occ_slice[:, :2])
+        valid = (ox >= 0) & (ox < nx) & (oy >= 0) & (oy < ny)
+        grid[oy[valid], ox[valid]] = 0
+
+    return OccSlice2DMeta(
+        image=grid,
+        origin=(origin_x, origin_y),
+        resolution=float(resolution),
+        slice_z=float(slice_z),
+        width=int(nx),
+        height=int(ny),
+    )
+
+
+def world_xy_to_occ_pixel(x: float, y: float, meta: OccSlice2DMeta) -> Tuple[int, int]:
+    """世界 XY 转图像像素坐标（行 0 为顶部）。"""
+    origin_x, origin_y = meta["origin"]
+    res = meta["resolution"]
+    width_m = res * meta["width"]
+    height_m = res * meta["height"]
+    u = (x - origin_x) / width_m
+    v = 1.0 - (y - origin_y) / height_m
+    px = int(round(u * meta["width"]))
+    py = int(round(v * meta["height"]))
+    return px, py
+
+
+def render_occ_map_with_rig(
+    meta: OccSlice2DMeta,
+    pose: List[float],
+    recorded: Optional[List[List[float]]] = None,
+) -> np.ndarray:
+    """在 occupancy 灰度图上绘制 rig 位置、朝向与已录制轨迹，返回 RGBA uint8。"""
+    pil = Image.fromarray(meta["image"]).convert("RGB")
+    draw = ImageDraw.Draw(pil)
+
+    if recorded:
+        for p in recorded:
+            rpx, rpy = world_xy_to_occ_pixel(float(p[0]), float(p[1]), meta)
+            draw.ellipse((rpx - 2, rpy - 2, rpx + 2, rpy + 2), fill=(80, 200, 80))
+
+    px, py = world_xy_to_occ_pixel(float(pose[0]), float(pose[1]), meta)
+    yaw_rad = np.deg2rad(float(pose[5]))
+    arrow_len = 14
+    ex = px + arrow_len * np.cos(yaw_rad)
+    ey = py - arrow_len * np.sin(yaw_rad)
+    draw.line((px, py, ex, ey), fill=(255, 60, 60), width=2)
+    draw.ellipse((px - 4, py - 4, px + 4, py + 4), fill=(255, 40, 40), outline=(255, 200, 200))
+
+    return np.asarray(pil.convert("RGBA"), dtype=np.uint8)
+
+
+def occ_slice_tag(slice_z: float) -> str:
+    return f"slice_z{float(slice_z):.2f}"
+
+
+def occ_slice_cache_paths(occ_dir: str, slice_z: float) -> Tuple[str, str]:
+    tag = occ_slice_tag(slice_z)
+    return (
+        os.path.join(occ_dir, f"{tag}.png"),
+        os.path.join(occ_dir, f"{tag}.json"),
+    )
+
+
+def save_occ_slice_2d_png(meta: OccSlice2DMeta, png_path: str) -> None:
+    Image.fromarray(meta["image"]).save(png_path)
+
+
+def save_occ_slice_2d_cache(meta: OccSlice2DMeta, occ_dir: str) -> Tuple[str, str]:
+    """保存 z 横截面 PNG 与元数据 JSON，返回 (png_path, json_path)。"""
+    os.makedirs(occ_dir, exist_ok=True)
+    png_path, json_path = occ_slice_cache_paths(occ_dir, meta["slice_z"])
+    save_occ_slice_2d_png(meta, png_path)
+    payload = {
+        "origin": [float(meta["origin"][0]), float(meta["origin"][1])],
+        "resolution": float(meta["resolution"]),
+        "slice_z": float(meta["slice_z"]),
+        "width": int(meta["width"]),
+        "height": int(meta["height"]),
+    }
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+    return png_path, json_path
+
+
+def load_occ_slice_2d_cache(occ_dir: str, slice_z: float) -> Optional[OccSlice2DMeta]:
+    """若存在对应 z 的 PNG+JSON 缓存则加载，否则返回 None。"""
+    png_path, json_path = occ_slice_cache_paths(occ_dir, slice_z)
+    if not (os.path.isfile(png_path) and os.path.isfile(json_path)):
+        return None
+    with open(json_path, encoding="utf-8") as f:
+        payload = json.load(f)
+    image = np.asarray(Image.open(png_path).convert("L"), dtype=np.uint8)
+    width = int(payload["width"])
+    height = int(payload["height"])
+    if image.shape != (height, width):
+        logger.warning(
+            f"occupancy 切片尺寸不匹配: {png_path} {image.shape} vs json {height}x{width}"
+        )
+        return None
+    origin = payload["origin"]
+    return OccSlice2DMeta(
+        image=image,
+        origin=(float(origin[0]), float(origin[1])),
+        resolution=float(payload["resolution"]),
+        slice_z=float(payload["slice_z"]),
+        width=width,
+        height=height,
+    )
+
+
+class OccSliceCache:
+    """按 z 高度缓存 occupancy 横截面；磁盘命中则加载，否则从 3D 点云生成。"""
+
+    def __init__(
+        self,
+        occ_dir: str,
+        occupied_xyz: np.ndarray,
+        free_xyz: np.ndarray,
+        resolution: float,
+    ):
+        self.occ_dir = occ_dir
+        self.occupied_xyz = occupied_xyz
+        self.free_xyz = free_xyz
+        self.resolution = float(resolution)
+        self._memory: Dict[float, OccSlice2DMeta] = {}
+
+    @staticmethod
+    def _z_key(slice_z: float) -> float:
+        return round(float(slice_z), 2)
+
+    def get_slice(self, slice_z: float) -> OccSlice2DMeta:
+        z_key = self._z_key(slice_z)
+        if z_key in self._memory:
+            return self._memory[z_key]
+
+        meta = load_occ_slice_2d_cache(self.occ_dir, z_key)
+        if meta is not None:
+            logger.info(f"命中 occupancy 切片缓存: z={z_key:.2f}")
+        else:
+            meta = build_occ_slice_2d(
+                self.occupied_xyz,
+                self.free_xyz,
+                slice_z=z_key,
+                resolution=self.resolution,
+            )
+            png_path, _ = save_occ_slice_2d_cache(meta, self.occ_dir)
+            logger.info(
+                f"生成 occupancy 切片 z={z_key:.2f}: "
+                f"{meta['width']}x{meta['height']} px -> {png_path}"
+            )
+
+        self._memory[z_key] = meta
+        return meta
 
 
 def save_semantic_occupancy_ply(semantic_occupancy: np.array, ply_path: str):
