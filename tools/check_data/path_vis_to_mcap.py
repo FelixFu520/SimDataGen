@@ -469,7 +469,7 @@ def main() -> None:
     )
     parser.add_argument('--path-idx', type=int, default=None, help='只处理指定路径编号')
     parser.add_argument('--downsample', type=int, default=10, help='相机点云降采样步长')
-    parser.add_argument('--max-points', type=int, default=4000000, help='相机点云/地图点数上限,0=不限')
+    parser.add_argument('--max-points', type=int, default=500000, help='相机点云/地图点数上限,0=不限')
     parser.add_argument(
         '--occupancy-downsample', type=int, default=1,
         help='占据场景降采样步长 (1=全量,比相机点云更密, None使用downsample)',
