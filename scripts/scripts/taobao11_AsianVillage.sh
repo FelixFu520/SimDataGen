@@ -7,7 +7,7 @@ NUM_POINTS_ENV=$3
 CAMERA_NAME=$4
 
 PROJECT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
-SCENE_USD_URL="${PROJECT_DIR}/assets_extern/TaoBao11/AsianVillage/Asian_Village.usd"
+SCENE_USD_URL="${PROJECT_DIR}/assets_extern/TaoBao11_fix2/AsianVillage/Asian_Village.usd"
 OUTPUT_DIR="${PROJECT_DIR}/workdir/taobao11_AsianVillage_${SEED_ENV}_${NUM_PATHS_ENV}_${NUM_POINTS_ENV}"
 OCCUPANCY_RESOLUTION=1
 NUM_POINTS=$NUM_POINTS_ENV

@@ -457,7 +457,7 @@ for task_name in "${TASKS[@]}"; do
   # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 100 1 10 60 "${task_name}" "q-20251110132321-bx8th" True ml.gni3cl.45xlarge 16 96 NVIDIA-L20 ml.gni3cl 1
   
   # 往L20 Task队列提交任务
-  # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 100 1 20 60 "${task_name}" "q-20260507105650-5lk49" True ml.gni3cl.45xlarge 64 384 NVIDIA-L20 ml.gni3cl 4
+  # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 100 1 40 60 "${task_name}" "q-20260507105650-5lk49" True ml.gni3cl.45xlarge 128 760 NVIDIA-L20 ml.gni3cl 8
 
   # 往预约的L20中提交任务
   # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 50 24 40 10 "${task_name}" "rp-20260518074302-f2l7s" False ml.gni3cl.11xlarge 16 96 NVIDIA-L20 ml.gni3cl 1
