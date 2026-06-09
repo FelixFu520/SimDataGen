@@ -368,6 +368,13 @@ TASKS=(
   # taobao10_005_AE37_009                                    # OKK
   # taobao10_007_GT_Grid_Armada_Military_Base                # OKK
 
+  # TaoBao11 场景
+  # taobao11_ASIAN_FireStage                                 # OKK
+  # taobao11_AsianVillage                                    # OKK
+  # taobao11_ForestHourse                                    # OKK
+  # taobao11_RuinedCrypt                                     # OKK
+  # taobao11_temple                                          # OKK
+
   # # Kujiale (InteriorAgent) 场景
   # kujiale_0003                                              # OKK
   # kujiale_0004                                              # OKK
@@ -447,7 +454,7 @@ for task_name in "${TASKS[@]}"; do
   # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 50 24 40 10 "${task_name}" "q-20260507093353-7r9k8" True ml.gni3.48xlarge 8 48 NVIDIA-L4 ml.gni3 1
 
   # 往L20 Develop队列提交任务
-  # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 50 1 40 10 "${task_name}" "q-20251110132321-bx8th" True ml.gni3cl.45xlarge 16 96 NVIDIA-L20 ml.gni3cl 1
+  # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 100 1 10 60 "${task_name}" "q-20251110132321-bx8th" True ml.gni3cl.45xlarge 16 96 NVIDIA-L20 ml.gni3cl 1
   
   # 往L20 Task队列提交任务
   # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 100 1 20 60 "${task_name}" "q-20260507105650-5lk49" True ml.gni3cl.45xlarge 64 384 NVIDIA-L20 ml.gni3cl 4
