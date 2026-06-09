@@ -305,7 +305,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="批量给 USD 所有 Mesh 添加碰撞属性")
     p.add_argument("--root", default="/home/fufa/Downloads/blender/Interior01_usd",
                    help="包含若干 USD 子目录的根目录")
-    p.add_argument("--approximation", default="none", choices=sorted(VALID_APPROXIMATIONS),
+    p.add_argument("--approximation", default="convexHull", choices=sorted(VALID_APPROXIMATIONS),
                    help="MeshCollisionAPI 的 approximation 类型,默认 none(精确三角网格)")
     p.add_argument("--timeout", type=float, default=360.0,
                    help="单文件超时秒数(默认 360s,按 batch 累加)")
