@@ -1,6 +1,10 @@
 # SimDataGen
 使用isaacsim在场景中采集数据
 
+## 示例视频
+- [SimDataGen示例视频 1](https://www.bilibili.com/video/BV1v5Es6yEJe/)
+- [SimDataGen示例视频 2](https://www.bilibili.com/video/BV1i5Es6yEcC/)
+
 ## 安装
 [安装教程](docs/install.md)
 
