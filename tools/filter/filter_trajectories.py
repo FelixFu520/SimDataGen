@@ -14,9 +14,10 @@
         - 平均饱和度
         - 近白像素占比 / 近黑像素占比
     若一张图 "色彩单一 / 信息量低", 则记为坏图, 包含以下任一情况:
-        1) 近黑占比 >= black_hard(硬阈值): 纯黑死区占主导, 直接判坏
-           (不要求低对比/低饱和, 避免"大面积纯黑+一道过曝高对比/带色条带"
-            把 std/sat 抬高从而绕过判定)
+        1) 近黑占比 >= black_hard(硬阈值) 且 饱和 < black_hard_sat: 纯黑死区
+           占主导且无色彩, 直接判坏(不要求低对比, 避免"大面积纯黑+一道过曝
+           高对比/带色条带"把 std 抬高从而绕过; 但加饱和上限, 避免误杀
+           "暗调但色彩丰富"的场景, 如地下停车场)
         2) 低对比 且 低饱和 (灰蒙蒙、单色一片)
         3) 大面积近白 且 低饱和 (基本全白)
         4) 大面积近黑 且 低对比 且 低饱和 (偏黑且无内容)
@@ -91,10 +92,12 @@ def is_bad_image(f, args):
     low_contrast = f["std"] < args.std_thresh
     low_sat = f["sat"] < args.sat_thresh
 
-    # 1) 大面积近黑死区(硬性): 纯黑占主导 -> 必然无有效内容, 直接判坏
-    #    不再要求同时低对比/低饱和: 否则"大面积纯黑 + 一条过曝高对比/带色条带"
-    #    会把 std/sat 抬高从而绕过判定(如黑墙 + 一道强光缝隙的空洞画面)
-    if f["black"] >= args.black_hard:
+    # 1) 大面积近黑死区(硬性): 纯黑占主导 且 饱和不高 -> 空洞无内容, 直接判坏
+    #    不要求低对比: 否则"大面积纯黑 + 一条过曝高对比/带色条带"会把 std 抬高
+    #    从而绕过判定(如黑墙 + 一道强光缝隙的空洞画面)。
+    #    但保留饱和上限(black_hard_sat): 避免误杀"暗调但色彩丰富"的场景
+    #    (如地下停车场: 近黑占比高, 但有警示条/灯光/标识, 饱和度很高、确有内容)
+    if f["black"] >= args.black_hard and f["sat"] < args.black_hard_sat:
         return True
     # 2) 低对比 且 低饱和: 灰蒙蒙 / 单色一片
     if low_contrast and low_sat:
@@ -187,7 +190,9 @@ def main():
     ap.add_argument("--white-ratio", type=float, default=0.55, help="近白占比阈值")
     ap.add_argument("--black-ratio", type=float, default=0.55, help="近黑占比阈值")
     ap.add_argument("--black-hard", type=float, default=0.60,
-                    help="近黑占比硬阈值, >= 则直接判坏(纯黑死区占主导, 无需低对比/低饱和)")
+                    help="近黑占比硬阈值, >= 且饱和<black-hard-sat 则直接判坏(纯黑死区占主导)")
+    ap.add_argument("--black-hard-sat", type=float, default=40.0,
+                    help="硬黑规则的饱和上限, 饱和>=该值视为有色彩内容(如暗调停车场), 不判坏")
     ap.add_argument("--bw-ratio", type=float, default=0.85,
                     help="近黑+近白占比阈值(黑白两极化), >= 且低饱和则丢弃")
     ap.add_argument("--size", type=int, default=128, help="缩放后边长(加速统计)")

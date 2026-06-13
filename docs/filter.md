@@ -6,6 +6,7 @@
 
 - `tools/filter/filter_trajectories.py` —— 过滤不可用轨迹，输出保留 / 丢弃名单
 - `tools/filter/sample_trajectories.py` —— 从名单中按轨迹随机抽帧，可选拼成视频
+- `tools/filter/batch_filter.sh` —— 批量对多个 workdir 目录执行"过滤 + save/discard 抽帧拼图"全流程
 
 运行环境：使用 `volc` conda 环境（已安装 numpy / Pillow / opencv）。
 
@@ -36,7 +37,7 @@ PY=/root/miniconda3/envs/volc/bin/python
 
 单张图满足以下任一情况，记为"坏图"（色彩单一 / 信息量低）：
 
-1. 近黑占比 `>= black-hard`（硬阈值，默认 0.60）—— 纯黑死区占主导，直接判坏。**不要求**低对比 / 低饱和，避免"大面积纯黑 + 一道过曝高对比 / 带色条带"把对比度 / 饱和度抬高从而绕过判定（如黑墙 + 一道强光缝隙的空洞画面）
+1. 近黑占比 `>= black-hard`（硬阈值，默认 0.60）**且** 饱和 `< black-hard-sat`（默认 40）—— 纯黑死区占主导且无色彩，直接判坏。**不要求**低对比，避免"大面积纯黑 + 一道过曝高对比 / 带色条带"把对比度抬高从而绕过判定（如黑墙 + 一道强光缝隙的空洞画面）；但加饱和上限，避免误杀"暗调但色彩丰富"的场景（如地下停车场：近黑占比高，却有警示条 / 灯光 / 标识，饱和度很高、确有内容）
 2. 低对比 **且** 低饱和 —— 灰蒙蒙、单色一片
 3. 大面积近白 **且** 低饱和 —— 基本全白
 4. 大面积近黑（`>= black-ratio`）**且** 低对比 **且** 低饱和 —— 偏黑且无内容（加低饱和约束，避免误杀"暗调但有暖光 / 丰富色彩内容"的图）
@@ -71,7 +72,8 @@ $PY tools/filter/filter_trajectories.py \
 | `--sat-thresh` | `8.0` | 饱和度阈值 |
 | `--white-ratio` | `0.55` | 近白占比阈值 |
 | `--black-ratio` | `0.55` | 近黑占比阈值（配合低对比 / 低饱和判坏） |
-| `--black-hard` | `0.60` | 近黑占比硬阈值，`>=` 则直接判坏（无需低对比 / 低饱和） |
+| `--black-hard` | `0.60` | 近黑占比硬阈值，`>=` 且饱和 `< black-hard-sat` 则直接判坏（无需低对比） |
+| `--black-hard-sat` | `40.0` | 硬黑规则的饱和上限，饱和 `>=` 该值视为有色彩内容（如暗调停车场），不判坏 |
 | `--bw-ratio` | `0.85` | 近黑+近白占比阈值（黑白两极化），`>=` 且低饱和则判坏 |
 | `--size` | `128` | 缩放后边长（加速统计） |
 | `--workers` | `16` | 并行进程数 |
@@ -83,7 +85,7 @@ $PY tools/filter/filter_trajectories.py \
   - `decision` 为 `save`（保留）或 `discard`（丢弃）
   - `reason` 为丢弃原因：`few_points`（点数过少）/ `bad_ratio`（坏图过多），保留时为空
 
-调参方向：想过滤更严，可调高 `--std-thresh` / `--sat-thresh`、调低 `--black-hard` 或调低 `--bad-ratio`；想更宽松则反之。其中 `--black-hard` 专门针对"大面积纯黑死区 + 少量过曝亮带"这类空洞画面（这类图对比度 / 饱和度会被亮带抬高，靠 `--std-thresh` / `--sat-thresh` 抓不到，需要靠近黑硬阈值）。
+调参方向：想过滤更严，可调高 `--std-thresh` / `--sat-thresh`、调低 `--black-hard` 或调低 `--bad-ratio`；想更宽松则反之。其中 `--black-hard` 专门针对"大面积纯黑死区 + 少量过曝亮带"这类空洞画面（这类图对比度会被亮带抬高，靠 `--std-thresh` 抓不到，需要靠近黑硬阈值）；若发现"暗调但有内容"的场景（如地下停车场）被硬黑规则误杀，可调高 `--black-hard-sat`（放过更多高饱和暗调画面），反之调低则更严。
 
 ---
 
@@ -165,3 +167,44 @@ $PY tools/filter/sample_trajectories.py \
     --root workdir_taobao08_01 \
     --out-dir workdir_filter/sample_save --step 15 --video
 ```
+
+---
+
+## 3. 批量处理：batch_filter.sh
+
+对多个 workdir 目录一次性跑完整流程：每个目录依次执行 **过滤 → save 抽帧拼图 → discard 抽帧拼图**。等价于对每个 `<workdir>` 手动跑：
+
+```bash
+$PY tools/filter/filter_trajectories.py --root <workdir>/ --out-dir workdir_filter/ --workers 32
+$PY tools/filter/sample_trajectories.py --list workdir_filter/<workdir>.csv --decision save \
+    --root <workdir>/ --out-dir workdir_filter/<workdir>_save --step 15 --fps 1
+$PY tools/filter/sample_trajectories.py --list workdir_filter/<workdir>.csv --decision discard \
+    --root <workdir>/ --out-dir workdir_filter/<workdir>_discard --step 15 --fps 1
+```
+
+### 用法
+
+```bash
+# 处理脚本内置的默认目录列表(workdir_intime ... workdir_taobao11)
+tools/filter/batch_filter.sh
+
+# 只处理指定的若干目录
+tools/filter/batch_filter.sh workdir_taobao04 workdir_taobao05
+
+# 自定义参数, 并额外拼视频
+tools/filter/batch_filter.sh --out-dir workdir_filter --workers 32 --step 15 --video
+```
+
+### 主要选项
+
+| 选项 | 默认值 | 说明 |
+| --- | --- | --- |
+| `[workdir ...]` | 内置列表 | 要处理的目录，留空用脚本内 `DEFAULT_DIRS` |
+| `--out-dir` | `workdir_filter` | 输出目录 |
+| `--workers` | `32` | 过滤并行进程数 |
+| `--step` | `15` | 抽帧间隔 |
+| `--fps` | `1` | 视频帧率（仅 `--video` 时生效） |
+| `--video` | 关 | 额外把抽帧拼图合并为视频（默认不拼） |
+| `--py` | `volc` 环境 python | python 解释器路径 |
+
+> 单个目录不存在则跳过、过滤出错则记为失败并继续后续目录；结束时打印 成功 / 跳过 / 失败 汇总。
