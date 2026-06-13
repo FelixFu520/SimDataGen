@@ -172,7 +172,7 @@ def main():
                     help="参与统计的相机, 留空表示该轨迹下所有相机")
     ap.add_argument("--bad-ratio", type=float, default=0.4,
                     help="轨迹中坏图比例阈值, >= 则丢弃")
-    ap.add_argument("--min-points", type=int, default=30,
+    ap.add_argument("--min-points", type=int, default=40,
                     help="轨迹中点(帧)数量阈值, < 则整条轨迹丢弃")
     ap.add_argument("--std-thresh", type=float, default=28.0, help="对比度阈值")
     ap.add_argument("--sat-thresh", type=float, default=12.0, help="饱和度阈值")

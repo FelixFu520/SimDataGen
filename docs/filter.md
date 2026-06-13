@@ -65,7 +65,7 @@ $PY tools/filter/filter_trajectories.py \
 | `--out-dir` | `tools/filter` | 输出 csv 目录 |
 | `--cameras` | `CAM_A` | 参与统计的相机，留空表示该轨迹下所有相机合并统计 |
 | `--bad-ratio` | `0.6` | 轨迹丢弃阈值，坏图比例 `>=` 该值则丢弃 |
-| `--min-points` | `30` | 轨迹点（帧）数量阈值，`<` 该值则整条轨迹丢弃 |
+| `--min-points` | `40` | 轨迹点（帧）数量阈值，`<` 该值则整条轨迹丢弃 |
 | `--std-thresh` | `28.0` | 对比度阈值 |
 | `--sat-thresh` | `12.0` | 饱和度阈值 |
 | `--white-ratio` | `0.55` | 近白占比阈值 |
