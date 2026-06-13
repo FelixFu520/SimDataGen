@@ -14,10 +14,13 @@
         - 平均饱和度
         - 近白像素占比 / 近黑像素占比
     若一张图 "色彩单一 / 信息量低", 则记为坏图, 包含以下任一情况:
-        1) 低对比 且 低饱和 (灰蒙蒙、单色一片)
-        2) 大面积近白 且 低饱和 (基本全白)
-        3) 大面积近黑 且 低对比 且 低饱和 (基本全黑、无内容)
-        4) 近黑+近白占比极高 且 低饱和 (黑白两极化, 如黑底+过曝白物体)
+        1) 近黑占比 >= black_hard(硬阈值): 纯黑死区占主导, 直接判坏
+           (不要求低对比/低饱和, 避免"大面积纯黑+一道过曝高对比/带色条带"
+            把 std/sat 抬高从而绕过判定)
+        2) 低对比 且 低饱和 (灰蒙蒙、单色一片)
+        3) 大面积近白 且 低饱和 (基本全白)
+        4) 大面积近黑 且 低对比 且 低饱和 (偏黑且无内容)
+        5) 近黑+近白占比极高 且 低饱和 (黑白两极化, 如黑底+过曝白物体)
     一条轨迹中坏图比例 >= bad_ratio(默认0.4) 则判为不可用 -> discard, 否则 -> save。
 
     另外, 一条轨迹中点(帧)数量 < min_points(默认30) 也直接判为不可用 -> discard。
@@ -88,18 +91,23 @@ def is_bad_image(f, args):
     low_contrast = f["std"] < args.std_thresh
     low_sat = f["sat"] < args.sat_thresh
 
-    # 1) 低对比 且 低饱和: 灰蒙蒙 / 单色一片
+    # 1) 大面积近黑死区(硬性): 纯黑占主导 -> 必然无有效内容, 直接判坏
+    #    不再要求同时低对比/低饱和: 否则"大面积纯黑 + 一条过曝高对比/带色条带"
+    #    会把 std/sat 抬高从而绕过判定(如黑墙 + 一道强光缝隙的空洞画面)
+    if f["black"] >= args.black_hard:
+        return True
+    # 2) 低对比 且 低饱和: 灰蒙蒙 / 单色一片
     if low_contrast and low_sat:
         return True
-    # 2) 大面积近白 且 低饱和: 基本全白
+    # 3) 大面积近白 且 低饱和: 基本全白
     if f["white"] >= args.white_ratio and low_sat:
         return True
-    # 3) 大面积近黑 且 低对比 且 低饱和: 基本全黑、无内容
-    #    增加低饱和约束, 避免误杀"暗调但有丰富色彩/灯光内容"的图
-    #    (如暖光服装店: 近黑占比高、对比低, 但饱和度高、实际有内容)
+    # 4) 大面积近黑 且 低对比 且 低饱和: 基本全黑、无内容
+    #    (低于 black_hard 但仍偏黑, 配合低对比/低饱和才判坏,
+    #     避免误杀"暗调但有丰富色彩/灯光内容"的图, 如暖光服装店)
     if f["black"] >= args.black_ratio and low_contrast and low_sat:
         return True
-    # 4) 近黑+近白占比极高 且 低饱和: 黑白两极化、几乎无中间调与色彩
+    # 5) 近黑+近白占比极高 且 低饱和: 黑白两极化、几乎无中间调与色彩
     #    (如黑底背景 + 过曝纯白植被/物体, 整图被纯黑/纯白瓜分, 细节丢失)
     if (f["white"] + f["black"]) >= args.bw_ratio and low_sat:
         return True
@@ -174,10 +182,12 @@ def main():
                     help="轨迹中坏图比例阈值, >= 则丢弃")
     ap.add_argument("--min-points", type=int, default=40,
                     help="轨迹中点(帧)数量阈值, < 则整条轨迹丢弃")
-    ap.add_argument("--std-thresh", type=float, default=28.0, help="对比度阈值")
-    ap.add_argument("--sat-thresh", type=float, default=12.0, help="饱和度阈值")
+    ap.add_argument("--std-thresh", type=float, default=20.0, help="对比度阈值")
+    ap.add_argument("--sat-thresh", type=float, default=8.0, help="饱和度阈值")
     ap.add_argument("--white-ratio", type=float, default=0.55, help="近白占比阈值")
     ap.add_argument("--black-ratio", type=float, default=0.55, help="近黑占比阈值")
+    ap.add_argument("--black-hard", type=float, default=0.60,
+                    help="近黑占比硬阈值, >= 则直接判坏(纯黑死区占主导, 无需低对比/低饱和)")
     ap.add_argument("--bw-ratio", type=float, default=0.85,
                     help="近黑+近白占比阈值(黑白两极化), >= 且低饱和则丢弃")
     ap.add_argument("--size", type=int, default=128, help="缩放后边长(加速统计)")
