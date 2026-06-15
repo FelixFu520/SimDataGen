@@ -13,7 +13,7 @@ def load_usd_file(usd_file_path: str) -> tuple[World, Usd.Stage]:
     # 获取stage
     stage = get_current_stage()
     # 添加地面平面（不可见）
-    objects.GroundPlane("/World/ground_plane", visible=False)
+    # objects.GroundPlane("/World/ground_plane", visible=False)
     # 初始化物理世界
     world = World(stage_units_in_meters=1.0, physics_dt=1.0/60.0, rendering_dt=1.0/60.0)
     

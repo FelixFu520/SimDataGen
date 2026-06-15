@@ -58,9 +58,9 @@
 #  ./tools/demo_data/run_gen_data_from_trajectory.sh \
 #   --scene_usd_url /home/fufa/projects2026/SimDataGen/asset_extern/TaoBao11/AsianVillage/Asian_Village.usd \
 #   --camera_usd_url /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA.usd \
-#   --trajectory_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory/Asian_Village \
+#   --trajectory_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory/AsianVillage \
 #   --trajectory_tags 1 \
-#   --output_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory_data/Asian_Village \
+#   --output_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory_data/AsianVillage \
 #   --point_stride 1
 
 #  ./tools/demo_data/run_gen_data_from_trajectory.sh \
@@ -109,3 +109,11 @@
 # ./scripts/batch_vis_to_mcap.sh /home/fufa/projects2026/SimDataGen/workdir/trajectory_data/kujiale_0030
 # ./app/python.sh tools/check_data/make_rgb_depth_video.py  --input workdir/trajectory_data/kujiale_0030/
 
+# ./scripts/batch_vis_to_mcap.sh /home/fufa/projects2026/SimDataGen/workdir/trajectory_data/temple
+# ./app/python.sh tools/check_data/make_rgb_depth_video.py  --input workdir/trajectory_data/temple/
+
+# ./scripts/batch_vis_to_mcap.sh /home/fufa/projects2026/SimDataGen/workdir/trajectory_data/ForestHourse
+# ./app/python.sh tools/check_data/make_rgb_depth_video.py  --input workdir/trajectory_data/ForestHourse/
+
+# ./scripts/batch_vis_to_mcap.sh /home/fufa/projects2026/SimDataGen/workdir/trajectory_data/RuinedCrypt
+# ./app/python.sh tools/check_data/make_rgb_depth_video.py  --input workdir/trajectory_data/RuinedCrypt/
