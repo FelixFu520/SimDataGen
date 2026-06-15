@@ -235,7 +235,6 @@ TASKS=(
   # taobao08_00_26_BedroomMorden                             # OKK
   # taobao08_00_28_CompactLibrary                            # OKK
   # taobao08_00_29_Coliving                                  # OKK  
-  # taobao08_00_2_ModernAbstractLivingRoom                   # OKK
   # taobao08_00_30_ModernApartmentLivingAndDining            # OKK
   # taobao08_00_32_ResidentialPartyRoom                      # OKK
   # taobao08_00_33_MinimalistLivingRoom                      # OKK, slow
@@ -254,7 +253,6 @@ TASKS=(
   # taobao08_00_4_ModernOrganicLivingRoom                    # OKK
   # taobao08_00_52_LuxuriousBathroom                         # OKK
   # taobao08_00_53_3dStudio                                  # OKK
-  # taobao08_00_55_BedroomKid                                # OKK
   # taobao08_00_57_InteriorDesign_29                         # OKK
   # taobao08_00_58_BedroomKid_14                             # OKK
   # taobao08_00_59_ElegantBathroom                           # OKK
@@ -368,6 +366,13 @@ TASKS=(
   # taobao10_005_AE37_009                                    # OKK
   # taobao10_007_GT_Grid_Armada_Military_Base                # OKK
 
+  # TaoBao11 场景
+  # taobao11_ASIAN_FireStage                                 # OKK
+  # taobao11_AsianVillage                                    # OKK
+  # taobao11_ForestHourse                                    # OKK
+  # taobao11_RuinedCrypt                                     # OKK
+  # taobao11_temple                                          # OKK
+
   # # Kujiale (InteriorAgent) 场景
   # kujiale_0003                                              # OKK
   # kujiale_0004                                              # OKK
@@ -399,32 +404,35 @@ TASKS=(
   # taobao08_01_48_SceneKitchenIndoorCoffee                  # OKK
   # taobao03_036_WillsRoom                                   # OKK
   # taobao08_01_81_ConvenienceStore                          # OKK
-  # taobao04_103_Shoppingmall01                              # OKK, 一个无商品商场 + 外面
-  # taobao03_114_Abandoned_Library                           # submit
-  # taobao03_116_SciFiWorld                                  # submit
-  # taobao04_103_Shoppingmall                                # submit, 两个商场，有商品、无商品              
-  # taobao04_103_Shoppingmall02                              # submit, 一个有商品商场
-  # taobao05_151_Galaxy                                      # submit
-  # taobao08_00_77_LivingRoom_25                             # submit
-  # taobao08_00_18_ModernBedroom                             # submit
-  # taobao08_01_138_BoxingRing                               # submit 
+  # taobao04_103_Shoppingmall01                              # OKK
+  # taobao03_114_Abandoned_Library                           # OKK
+  # taobao03_116_SciFiWorld                                  # OKK
+  # taobao04_103_Shoppingmall                                # OKK           
+  # taobao04_103_Shoppingmall02                              # OKK
+  # taobao08_01_138_BoxingRing                               # OKK 
+  # taobao_OutdoorFurniture                                  # OKK
 
   # # 报错场景
-  # taobao10_001_AE37_001_Blender                            # OKK     
-  # taobao10_004_AE37_007                                    # OKK
-  # taobao08_01_10_ModernLuxuriousKitchenInterior            # OKK
-  # taobao08_00_82_InteriorDesign_22                         # OKK
-  # taobao06_216_Triplex_House_Villa                         # OKK
-  # taobao_OutdoorFurniture                                  # OKK
   # taobao_UtopianCity                                       # submit
   # taobao03_020_AbandonedHK                                 # submit
+  # taobao05_151_Galaxy                                      # submit
   # taobao06_211_city_of_gods                                # submit
-  # taobao08_01_117_AntiqueBrownAndGreenApartment            # submit
-  # taobao08_00_151_MysticForestPathInBlender                # submit
+  # taobao06_216_Triplex_House_Villa                         # submit
+  # taobao08_00_2_ModernAbstractLivingRoom                   # OKK
   # taobao08_00_43_LivingRoomScene                           # submit
-  # taobao09_05_ModularJapaneseTemple                        # submit
+  # taobao08_00_18_ModernBedroom                             # submit
+  # taobao08_00_77_LivingRoom_25                             # submit
+  # taobao08_00_82_InteriorDesign_22                         # submit
+  # taobao08_00_151_MysticForestPathInBlender                # submit
+  # taobao08_01_10_ModernLuxuriousKitchenInterior            # submit
   # taobao08_01_105_LivingRoomInterior                       # submit
-  # taobao10_006_AE38_005_Blender                            # submit           
+  # taobao08_01_117_AntiqueBrownAndGreenApartment            # submit
+  # taobao09_05_ModularJapaneseTemple                        # submit
+  # taobao10_001_AE37_001_Blender                            # OKK     
+  # taobao10_004_AE37_007                                    # OKK
+  # taobao10_006_AE38_005_Blender                            # submit  
+
+
 
 )
 
@@ -441,16 +449,16 @@ cd "$(dirname "$0")"
 for task_name in "${TASKS[@]}"; do
   echo "提交 task: ${task_name}"
   # 往L4 Task队列中提交任务
-  # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 100 6 10 60 "${task_name}" "q-20260429225420-jrwjn" True ml.gni3.48xlarge 8 48 NVIDIA-L4 ml.gni3 1
+  # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 130 20 1 60 "${task_name}" "q-20260429225420-jrwjn" True ml.gni3.48xlarge 8 48 NVIDIA-L4 ml.gni3 1
   
   # 往L4 Develop队列提交任务
   # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 50 24 40 10 "${task_name}" "q-20260507093353-7r9k8" True ml.gni3.48xlarge 8 48 NVIDIA-L4 ml.gni3 1
 
   # 往L20 Develop队列提交任务
-  # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 50 1 40 10 "${task_name}" "q-20251110132321-bx8th" True ml.gni3cl.45xlarge 16 96 NVIDIA-L20 ml.gni3cl 1
+  # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 100 1 10 60 "${task_name}" "q-20251110132321-bx8th" True ml.gni3cl.45xlarge 16 96 NVIDIA-L20 ml.gni3cl 1
   
   # 往L20 Task队列提交任务
-  # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 100 1 20 60 "${task_name}" "q-20260507105650-5lk49" True ml.gni3cl.45xlarge 64 384 NVIDIA-L20 ml.gni3cl 4
+  # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 130 1 10 60 "${task_name}" "q-20260507105650-5lk49" True ml.gni3cl.45xlarge 64 384 NVIDIA-L20 ml.gni3cl 4
 
   # 往预约的L20中提交任务
   # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 50 24 40 10 "${task_name}" "rp-20260518074302-f2l7s" False ml.gni3cl.11xlarge 16 96 NVIDIA-L20 ml.gni3cl 1
