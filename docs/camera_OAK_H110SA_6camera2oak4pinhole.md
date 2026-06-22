@@ -5,6 +5,7 @@
 使用Isaacsim UI界面添加, 结果保存成`oak_camera_2lut_4H110SA.usd`
 
 ### bake参数到usd 
+不要执行这一步，因为CAM_A/B/C/D是针孔相机，执行的话，会把oak写到针孔上
 ```
 ./app/python.sh tools/cameras/oak_bake_camera_intrinsics.py \
     --usd assets/cameras/oak_camera_2lut_4H110SA.usd \
@@ -26,7 +27,7 @@
 ### 采集数据
 ```
 ./app/python.sh gen_data.py \
---seed 0 \
+--seed 100 \
 --scene_usd_url /home/fufa/projects2026/SimDataGen/asset_extern/TaoBao03/108_Bazaar/Demo.usd \
 --camera_usd_url /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_2lut_4H110SA_regular.usd \
 --output_dir /home/fufa/projects2026/SimDataGen/workdir/108_Bazaar_oak_camera_2lut_4H110SA_regular \
