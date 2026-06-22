@@ -19,7 +19,7 @@ SCRIPT_DIR="${PROJECT_DIR}/scripts/scripts"
 # echo "SCRIPT_DIR($0): ${SCRIPT_DIR}"
 ONE_TASK_SCRIPT="${PROJECT_DIR}/scripts/submit_all_seed_one_task.sh"
 # echo "ONE_TASK_SCRIPT($0): ${ONE_TASK_SCRIPT}"
-CAMERA_NAME=${1:-"oak_camera_4lut_2H110SA"}
+CAMERA_NAME=${1:-"oak_camera_2lut_4H110SA_regular"}
 # echo "CAMERA_NAME($0): ${CAMERA_NAME}"
 
 if [[ ! -x "${ONE_TASK_SCRIPT}" ]]; then
@@ -366,7 +366,7 @@ TASKS=(
   # taobao10_005_AE37_009                                    # OKK
   # taobao10_007_GT_Grid_Armada_Military_Base                # OKK
 
-  # TaoBao11 场景
+  # # TaoBao11 场景
   # taobao11_ASIAN_FireStage                                 # OKK
   # taobao11_AsianVillage                                    # OKK
   # taobao11_ForestHourse                                    # OKK
@@ -449,7 +449,7 @@ cd "$(dirname "$0")"
 for task_name in "${TASKS[@]}"; do
   echo "提交 task: ${task_name}"
   # 往L4 Task队列中提交任务
-  # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 130 20 1 60 "${task_name}" "q-20260429225420-jrwjn" True ml.gni3.48xlarge 8 48 NVIDIA-L4 ml.gni3 1
+  bash submit_all_seed_one_task.sh ${CAMERA_NAME} 140 2 10 60 "${task_name}" "q-20260429225420-jrwjn" True ml.gni3.48xlarge 8 48 NVIDIA-L4 ml.gni3 1
   
   # 往L4 Develop队列提交任务
   # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 50 24 40 10 "${task_name}" "q-20260507093353-7r9k8" True ml.gni3.48xlarge 8 48 NVIDIA-L4 ml.gni3 1

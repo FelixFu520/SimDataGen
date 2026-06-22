@@ -52,16 +52,37 @@ cd "$PROJECT_DIR"
 
 for ((i = 0; i < SEED_COUNT; i++)); do
   SEED_ENV=$((SEED_START + i))
-  python tools/volcengine/submit_volcengine.py --ak "${VOLC_AK}" --sk "${VOLC_SK}" --private_image_password "${VOLC_PASSWD}" \
+  python tools/volcengine/submit_volcengine_efs.py \
     --task_name "${TASK_NAME}_${CAMERA_NAME_ENV}_seed${SEED_ENV}_paths${NUM_PATHS_ENV}_points${NUM_POINTS_ENV}" \
-    --command "${TASK_SCRIPT} ${SEED_ENV} ${NUM_PATHS_ENV} ${NUM_POINTS_ENV} ${CAMERA_NAME_ENV}" \
+    --command "bash ${TASK_SCRIPT} ${SEED_ENV} ${NUM_PATHS_ENV} ${NUM_POINTS_ENV} ${CAMERA_NAME_ENV}" \
     --resource_queue_id "${RESOURCE_QUEUE_ID}" \
-    --is_flexible "${IS_FLEXIBLE}" \
     --instance_type_id "${INSTANCE_TYPE_ID}" \
+    --region "cn-beijing" \
     --cpu_number "${CPU_NUMBER}" \
     --memory_number "${MEMORY_NUMBER}" \
     --gpu_type "${GPU_TYPE}" \
+    --gpu_count "${GPU_NUMBER}" \
     --family "${FAMILY}" \
-    --gpu_count "${GPU_NUMBER}"
+    --zone_id "cn-beijing-c" \
+    --is_flexible "${IS_FLEXIBLE}" \
+    --tos_name "drobotics-ailab" \
+    --tos_mount_path "/root/tos" \
+    --tos_prefix "" \
+    --vepfs_name "DRoboticsAILab" \
+    --vepfs_volume_id "vepfs-cnbjf7015ef11e9c" \
+    --vepfs_mount_path "/root/vepfs" \
+    --vepfs_prefix "/fa.fu" \
+    --efs_name "DRoboticsAILab" \
+    --efs_id "efs-cnbjc8a589e0f6d6f" \
+    --efs_mount_path "/root/efs" \
+    --efs_prefix "/users/" \
+    --efs_type "Premium" \
+    --efs_addr "cnbjc8a589e0f6d6f.3psq7ep69ltkw6csxyuomq6f5.cn-beijing.efs.ivolces.com" \
+    --efs_read_only false \
+    --efs_access_point_id "ap-ab8d0375" \
+    --private_image_username "D-Robotics@2108796092" \
+    --private_image_password "${VOLC_PASSWD}" \
+    --ak "${VOLC_AK}" \
+    --sk "${VOLC_SK}"
 
 done
