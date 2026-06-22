@@ -449,7 +449,7 @@ cd "$(dirname "$0")"
 for task_name in "${TASKS[@]}"; do
   echo "提交 task: ${task_name}"
   # 往L4 Task队列中提交任务
-  bash submit_all_seed_one_task.sh ${CAMERA_NAME} 140 2 10 60 "${task_name}" "q-20260429225420-jrwjn" True ml.gni3.48xlarge 8 48 NVIDIA-L4 ml.gni3 1
+  # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 140 2 10 60 "${task_name}" "q-20260429225420-jrwjn" True ml.gni3.48xlarge 8 48 NVIDIA-L4 ml.gni3 1
   
   # 往L4 Develop队列提交任务
   # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 50 24 40 10 "${task_name}" "q-20260507093353-7r9k8" True ml.gni3.48xlarge 8 48 NVIDIA-L4 ml.gni3 1
