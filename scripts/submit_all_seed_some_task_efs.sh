@@ -17,7 +17,7 @@ PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 # echo "PROJECT_DIR($0): ${PROJECT_DIR}"
 SCRIPT_DIR="${PROJECT_DIR}/scripts/scripts"
 # echo "SCRIPT_DIR($0): ${SCRIPT_DIR}"
-ONE_TASK_SCRIPT="${PROJECT_DIR}/scripts/submit_all_seed_one_task.sh"
+ONE_TASK_SCRIPT="${PROJECT_DIR}/scripts/submit_all_seed_one_task_efs.sh"
 # echo "ONE_TASK_SCRIPT($0): ${ONE_TASK_SCRIPT}"
 CAMERA_NAME=${1:-"oak_camera_4lut_2H110SA"}
 # echo "CAMERA_NAME($0): ${CAMERA_NAME}"
@@ -30,7 +30,7 @@ fi
 # 每项为 task_name，对应脚本为 ${SCRIPT_DIR}/${task}.sh
 TASKS=(
   # # Intime_Home场景
-  # intime_factory_000  # OKK
+  intime_factory_000  # OKK
   # intime_home_000     # OKK
   # intime_home_001     # OKK
   # intime_home_002     # OKK
@@ -449,7 +449,7 @@ cd "$(dirname "$0")"
 for task_name in "${TASKS[@]}"; do
   echo "提交 task: ${task_name}"
   # 往L4 Task队列中提交任务
-  # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 130 20 1 60 "${task_name}" "q-20260429225420-jrwjn" True ml.gni3.48xlarge 8 48 NVIDIA-L4 ml.gni3 1
+  bash submit_all_seed_one_task_efs.sh ${CAMERA_NAME} 140 1 10 60 "${task_name}" "q-20260429225420-jrwjn" True ml.gni3.48xlarge 8 48 NVIDIA-L4 ml.gni3 1
   
   # 往L4 Develop队列提交任务
   # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 50 24 40 10 "${task_name}" "q-20260507093353-7r9k8" True ml.gni3.48xlarge 8 48 NVIDIA-L4 ml.gni3 1
