@@ -8,7 +8,7 @@ CAMERA_NAME=$4
 
 PROJECT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 SCENE_USD_URL="${PROJECT_DIR}/assets_extern/Intime_Home/home_006/home_006.usdc"
-OUTPUT_DIR="${PROJECT_DIR}/workdir/intime_home_006_${SEED_ENV}_${NUM_PATHS_ENV}_${NUM_POINTS_ENV}"
+OUTPUT_DIR="${PROJECT_DIR}/workdir/Intime_Home/intime_home_006_${SEED_ENV}_${NUM_PATHS_ENV}_${NUM_POINTS_ENV}"
 OCCUPANCY_RESOLUTION=0.1
 NUM_POINTS=$NUM_POINTS_ENV
 NUM_PATHS=$NUM_PATHS_ENV
@@ -45,8 +45,7 @@ echo "MAX_PATH_GENERATION_ATTEMPTS: $MAX_PATH_GENERATION_ATTEMPTS"
 cd "$PROJECT_DIR"
 
 # 创建软链接，让isaacsim可以识别到资产
-ln -s ${PROJECT_DIR}/../5.1_asset /root/5.1_asset
-
+ln -s /root/efs/users/fa.fu/vepfs/20260620/isaacsim/5.1_asset /root/5.1_asset
 # 生成数据
 ./app/python.sh gen_data.py \
 --seed $SEED_ENV \

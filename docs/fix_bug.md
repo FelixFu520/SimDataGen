@@ -132,3 +132,98 @@ def load_usd_file(usd_file_path: str) -> tuple[World, Usd.Stage]:
 - `tools/usd/diagnose_runtime_bbox.py`：复现 `load_usd_file + world.reset()` 运行时流程，揪出运行时才出现的离群超大 mesh（本 bug 中即定位到 `/World/ground_plane/geom`）。
 
 两者对比可快速区分"USD 文件自带的几何问题"与"运行时注入的 prim 问题"。
+
+---
+
+## Bug 修复记录：去掉 GroundPlane 后室内场景渲染发黑
+
+> 时间：2026-06-23
+
+### 背景
+
+为修复上一节"free positions 错位"的 bug，曾在 `sdg_utils/usd.py` 的 `load_usd_file()` 中**注释掉** GroundPlane 的创建：
+
+```python
+# objects.GroundPlane("/World/ground_plane", visible=False)
+```
+
+这解决了 AsianVillage（大 Z 跨度户外地形）的 occupancy 错位问题，但在室内场景上引入了新问题。
+
+### 现象
+
+在 `home_000`（室内客厅）场景跑 `gen_data.py`：
+
+- **注释掉 GroundPlane（fix_efs 分支原状）**：渲染出来的 RGB 图整体**偏黑 / 发黑**，结果不可用。
+- **取消注释、恢复 GroundPlane（main 分支）**：渲染正常。
+
+最初怀疑是"相机移动方向 / 朝向错误"，但经逐项对比排除了这个方向。
+
+### 排查过程（关键数据）
+
+对同一套参数（`--seed 100`，home_000），分别用注释/不注释两种状态跑出两个输出目录，逐项对比：
+
+| 对比项 | 结果 |
+|---|---|
+| `occupancy/occupied_positions.npy` | **逐字节相同** |
+| `occupancy/free_positions.npy` | **逐字节相同** |
+| `path/paths.npy`（相机轨迹位置序列） | **逐字节相同** |
+| `common/*.npy` 中 6 个相机 × 60 个点的 `extrinsics_world`（相机世界外参矩阵） | **100% 完全相同**（atol=1e-3） |
+| 最终 `rgb/*.jpg` | **不同**：注释状态整体发黑 |
+
+结论：**相机位姿（位置 + 朝向）、occupancy、轨迹完全没变，唯一变化的是最终渲染出来的画面亮度**。所以这不是"相机方向错误"，而是渲染光照问题。
+
+### 根因
+
+GroundPlane 虽然 `visible=False`（不直接出现在画面里），但在 **PathTracing / RTX 渲染**下它**仍然参与光线弹射**，为场景补一层来自下方的间接光 / 反射（地面反射兜底）。
+
+- 室内场景（home_000）原本依赖这块地面把向下的光线反射回来。去掉它之后，向下的光线没有东西反射，整个画面间接光骤减，于是**发黑**。
+- 这也解释了为什么 occupancy / 外参完全不变：GroundPlane 是不可见的，对体素扫描范围以外的这些计算没有影响，只影响最终 RGB 的光照。
+
+于是形成一个两难：
+
+| | 注释掉 GroundPlane | 恢复 GroundPlane |
+|---|---|---|
+| AsianVillage（户外大地形） | ✅ free 不再错位 | ❌ 无限碰撞地面污染 occupancy，free 错位 |
+| home_000（室内平地） | ❌ 渲染发黑 | ✅ 渲染正常 |
+
+无论全局保留还是全局删除，都会牺牲一类场景。
+
+### 解决方案
+
+关键事实：在 `gen_data.py` 的流程里，**occupancy 计算（步骤2）和路径生成（步骤3）都在相机渲染（步骤4/5）之前**。GroundPlane 只在「occupancy 阶段」有害（污染体素扫描），只在「渲染阶段」有用（补间接光）。因此把它的创建时机从"加载时无条件注入"**推迟到 occupancy / 路径算完之后、渲染开始之前**，即可两全。
+
+具体改动：
+
+1. `sdg_utils/usd.py`：`load_usd_file()` 不再创建 GroundPlane；新增独立函数 `add_ground_plane()`：
+
+```python
+def add_ground_plane(prim_path: str = "/World/ground_plane") -> None:
+    """创建一个不可见的 GroundPlane, 用于渲染阶段的地面反射/间接光兜底。
+    必须在 occupancy 计算完成之后、相机渲染开始之前调用。
+    """
+    objects.GroundPlane(prim_path, visible=False)
+```
+
+2. `gen_data.py`：在步骤3（路径）之后、步骤4（相机）之前新增「步骤3.5」调用它：
+
+```python
+# ============ 步骤 3.5: 渲染前补地面 ============
+logger.info("[步骤3.5][开始] 渲染前添加不可见 GroundPlane(地面反射兜底)")
+add_ground_plane("/World/ground_plane")
+logger.info("[步骤3.5][结束] GroundPlane 已添加")
+```
+
+### 效果
+
+| 阶段 | 有无 GroundPlane | 效果 |
+|---|---|---|
+| occupancy（步骤2）| 无 | 不污染体素扫描，AsianVillage 的 free 错位 bug 不复现 |
+| 渲染（步骤5）| 有 | 提供地面间接光 / 反射兜底，home_000 不再发黑 |
+
+对所有场景通用，无需按场景调整 GroundPlane 尺寸。
+
+### 验证建议
+
+1. 用 `fix_efs` 跑 home_000，确认 RGB 不再发黑。
+2. 对比 occupancy 输出与注释状态下是否一致（应一致，因为 occupancy 阶段没有 GroundPlane）。
+3. 跑一次 AsianVillage，确认 `path/filtered_free_positions.ply` 没有出现 ±5000 的大斜面（上一节的修复仍然有效）。

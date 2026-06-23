@@ -18,6 +18,7 @@
 - [oak+2pinhole工装-内外参扰动](docs/camera_OAK_H30YA_intrinsics_extrinsics_perturbed.md)
 - [oak+2pinhole工装(针孔是H110SA)](docs/camera_OAK_H110SA.md)
 - [oak+2pinhole工装(针孔是H110SA), 规则外参](docs/camera_OAK_H110SA_regular.md)
+- [2oak+4pinhole工装(针孔是H110SA)](docs/camera_OAK_H110SA_6camera2oak4pinhole.md)
 
 
 ## 使用
