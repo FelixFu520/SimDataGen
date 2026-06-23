@@ -32,7 +32,7 @@ import omni.replicator.core as rep
 from isaacsim.asset.gen.omap.bindings import _omap  # 此文件不用, 但是别的文件要用, 这个要个 启动扩展 配合, 所以必须导入
 
 # 自定义工具
-from sdg_utils.usd import load_usd_file
+from sdg_utils.usd import load_usd_file, add_ground_plane
 from sdg_utils.occupancy import (
     get_mesh_paths,
     get_semantic_occupancy,
@@ -258,6 +258,15 @@ if __name__ == "__main__":
         save_filtered_ply=True,
     )
     logger.info(f"[步骤3][结束] 生成 3D 路径, 共 {len(paths_xyz)} 条, 耗时 {_fmt_duration(time.perf_counter() - step3_start)}")
+
+    # ============ 步骤 3.5: 渲染前补地面 ============
+    # GroundPlane 是 visible=False 的不可见地面, 不出现在画面里, 但在 PathTracing/RTX
+    # 渲染下参与光线弹射, 为场景补一层来自下方的间接光/反射(缺少它时室内场景会发黑)。
+    # 必须放在 occupancy(步骤2)与路径(步骤3)之后、相机渲染(步骤4/5)之前创建,
+    # 否则它的无限碰撞地面会污染 occupancy 体素扫描(详见 docs/fix_bug.md)。
+    logger.info("[步骤3.5][开始] 渲染前添加不可见 GroundPlane(地面反射兜底)")
+    add_ground_plane("/World/ground_plane")
+    logger.info("[步骤3.5][结束] GroundPlane 已添加")
 
     # ============ 步骤 4: 相机 ============
     logger.info("[步骤4][开始] 添加相机")
