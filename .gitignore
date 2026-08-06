@@ -6,9 +6,11 @@ docs/oak_camera_perturbed/
 app
 asset_extern
 assets_extern
+extern_asserts/
 asset_internal
 assets/cameras/oak_camera_texture*
 workdir*
+work_dir*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
