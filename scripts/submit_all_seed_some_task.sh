@@ -19,7 +19,7 @@ SCRIPT_DIR="${PROJECT_DIR}/scripts/scripts"
 # echo "SCRIPT_DIR($0): ${SCRIPT_DIR}"
 ONE_TASK_SCRIPT="${PROJECT_DIR}/scripts/submit_all_seed_one_task.sh"
 # echo "ONE_TASK_SCRIPT($0): ${ONE_TASK_SCRIPT}"
-CAMERA_NAME=${1:-"oak_camera_2lut_4H110SA_regular"}
+CAMERA_NAME=${1:-"oak_camera_4lut_2H110SA_20260806"}
 # echo "CAMERA_NAME($0): ${CAMERA_NAME}"
 
 if [[ ! -x "${ONE_TASK_SCRIPT}" ]]; then
@@ -449,7 +449,9 @@ cd "$(dirname "$0")"
 for task_name in "${TASKS[@]}"; do
   echo "提交 task: ${task_name}"
   # 往L4 Task队列中提交任务
-  # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 140 2 10 60 "${task_name}" "q-20260429225420-jrwjn" True ml.gni3.48xlarge 8 48 NVIDIA-L4 ml.gni3 1
+  # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 400 4 10 60 "${task_name}" "q-20260429225420-jrwjn" True ml.gni3.48xlarge 8 48 NVIDIA-L4 ml.gni3 1
+  # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 400 4 10 60 "${task_name}" "q-20260806203816-pg7x8" True ml.gni3.48xlarge 8 48 NVIDIA-L4 ml.gni3 1
+  # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 400 4 10 60 "${task_name}" "q-20260810131417-rsrdr" True ml.gni3.48xlarge 8 48 NVIDIA-L4 ml.gni3 1
   
   # 往L4 Develop队列提交任务
   # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 50 24 40 10 "${task_name}" "q-20260507093353-7r9k8" True ml.gni3.48xlarge 8 48 NVIDIA-L4 ml.gni3 1
@@ -458,7 +460,8 @@ for task_name in "${TASKS[@]}"; do
   # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 100 1 10 60 "${task_name}" "q-20251110132321-bx8th" True ml.gni3cl.45xlarge 16 96 NVIDIA-L20 ml.gni3cl 1
   
   # 往L20 Task队列提交任务
-  # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 130 1 10 60 "${task_name}" "q-20260507105650-5lk49" True ml.gni3cl.45xlarge 64 384 NVIDIA-L20 ml.gni3cl 4
+  # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 400 4 10 60 "${task_name}" "q-20260507105650-5lk49" True ml.gni3cl.45xlarge 64 384 NVIDIA-L20 ml.gni3cl 4
+  # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 400 4 10 60 "${task_name}" "q-20260507105650-5lk49" True ml.gni3cl.45xlarge 16 96 NVIDIA-L20 ml.gni3cl 1
 
   # 往预约的L20中提交任务
   # bash submit_all_seed_one_task.sh ${CAMERA_NAME} 50 24 40 10 "${task_name}" "rp-20260518074302-f2l7s" False ml.gni3cl.11xlarge 16 96 NVIDIA-L20 ml.gni3cl 1

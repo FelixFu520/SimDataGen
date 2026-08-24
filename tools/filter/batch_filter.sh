@@ -30,8 +30,8 @@
 set -u
 
 # ----------------------------- 默认参数 ----------------------------- #
-PY="/root/miniconda3/envs/volc/bin/python"
-OUT_DIR="workdir_filter"
+PY="/root/vepfs/miniconda3/envs/simdatagen/bin/python"
+OUT_DIR="workdir/filter"
 WORKERS=32
 STEP=15
 FPS=1

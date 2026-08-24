@@ -66,6 +66,7 @@ fisheye_cams.yaml
   → oak_generate_lut_textures.py      # 生成 EXR LUT
   → oak_set_camera_lut_texture_paths.py  # 写入 USD 纹理路径
   → oak_bake_camera_intrinsics.py     # bake 内参 + maskRadius
+  → oak_bake_camera_extrinsics_from_yaml.py  # bake 绝对外参（可选）
   → oak_bake_camera_extrinsics.py     # bake 外参平移扰动（可选）
 ```
 
@@ -78,6 +79,7 @@ fisheye_cams.yaml
 | `oak_generate_lut_textures.py` | 从 Kalibr omni 标定 yaml 生成 Mei 鱼眼模型的 `rayEnterDirection` / `rayExitPosition` EXR 纹理，供 Isaac Sim `OmniLensDistortionLutAPI` 使用 |
 | `oak_set_camera_lut_texture_paths.py` | 将 LUT 纹理路径写入相机 USD（相对 USD 目录），无需在 Isaac Sim 中手改 |
 | `oak_bake_camera_intrinsics.py` | 将 yaml 内参及自定义分辨率 bake 进 USD（`omni:calibration:*` 属性）；自动估计 `maskRadius`、修正 `verticalAperture` |
+| `oak_bake_camera_extrinsics_from_yaml.py` | 将 yaml `T_cam_imu`（本仓库约定 = Kalibr `T_ci`）绝对外参 bake 进 USD（translate + orient 四元数） |
 | `oak_bake_camera_extrinsics.py` | 将外参平移 xyz 扰动 bake 进 USD（仅改 translate，不碰旋转，避免朝向漂移） |
 | `oak_generate_perturbed_yaml.py` | 从原始标定生成扰动版 `fisheye_cams.yaml`；支持 `small_change` / `pinhole_like` / `fisheye_like` / `extrinsics_change` 等 profile |
 | `oak_setup_intrinsics_change_variant.py` | 一键搭建内参扰动相机组（`pinhole_like`、`fisheye_like` 等变体） |
