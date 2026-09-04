@@ -112,17 +112,23 @@ from sdg_utils.occupancy import (
     get_semantic_occupancy,
     save_semantic_occupancy_ply,
 )
-from sdg_utils.usd import load_usd_file
+from sdg_utils.usd import add_ground_plane, load_usd_file
 from sdg_utils.trajectory import save_path_ply
 from tools.demo_data.occupancy_map_panel import OccupancyMapPanel
 
 # Isaac 编辑器默认透视相机，勿用 CameraRig 上的 CAM_* 作为视口相机
 VIEWPORT_OBSERVER_CAMERA = "/OmniverseKit_Persp"
 PRIMARY_VIEWPORT_WINDOW = "Viewport"
-# 6 路相机在主窗口内 2×3 停靠布局（与 demo 截图一致）
-VIEWPORT_GRID_ROWS = (
-    ("CAM_A", "CAM_Front", "CAM_B"),
-    ("CAM_D", "CAM_Back", "CAM_C"),
+# 按相机数在主窗口内停靠：6 路 2×3，4 路鱼眼 2×2
+VIEWPORT_GRID_PRESETS = (
+    (
+        ("CAM_A", "CAM_Front", "CAM_B"),
+        ("CAM_D", "CAM_Back", "CAM_C"),
+    ),
+    (
+        ("CAM_A", "CAM_B"),
+        ("CAM_D", "CAM_C"),
+    ),
 )
 
 logger.remove()
@@ -306,8 +312,8 @@ class CameraRigTrajectoryRecorder(Node):
                 return
             await app.next_update_async()
 
-    def _schedule_viewport_grid_docking(self) -> None:
-        """将 5 个额外观口停靠成 2×3 网格（主视口 CAM_A 占左上）。"""
+    def _schedule_viewport_grid_docking(self, rows: tuple) -> None:
+        """将额外视口停靠成 rows 指定的网格（主视口 CAM_A 占左上）。"""
         try:
             import omni.kit.async_engine
             from omni import ui
@@ -315,52 +321,50 @@ class CameraRigTrajectoryRecorder(Node):
             return
 
         async def _dock_all() -> None:
-            # 上行：CAM_Front | CAM_B 依次向右拆分
-            await self._dock_viewport_window(
-                self._viewport_window_name("CAM_Front"),
-                PRIMARY_VIEWPORT_WINDOW,
-                ui.DockPosition.RIGHT,
-                2.0 / 3.0,
-            )
-            await self._dock_viewport_window(
-                self._viewport_window_name("CAM_B"),
-                self._viewport_window_name("CAM_Front"),
-                ui.DockPosition.RIGHT,
-                0.5,
-            )
-            # 下行：CAM_D | CAM_Back | CAM_C 在对应列下方拆分
-            await self._dock_viewport_window(
-                self._viewport_window_name("CAM_D"),
-                PRIMARY_VIEWPORT_WINDOW,
-                ui.DockPosition.BOTTOM,
-                0.5,
-            )
-            await self._dock_viewport_window(
-                self._viewport_window_name("CAM_Back"),
-                self._viewport_window_name("CAM_Front"),
-                ui.DockPosition.BOTTOM,
-                0.5,
-            )
-            await self._dock_viewport_window(
-                self._viewport_window_name("CAM_C"),
-                self._viewport_window_name("CAM_B"),
-                ui.DockPosition.BOTTOM,
-                0.5,
-            )
+            n_cols = len(rows[0])
+            for col in range(1, n_cols):
+                child = self._viewport_window_name(rows[0][col])
+                parent = (
+                    PRIMARY_VIEWPORT_WINDOW
+                    if col == 1
+                    else self._viewport_window_name(rows[0][col - 1])
+                )
+                ratio = float(n_cols - col) / float(n_cols - col + 1)
+                await self._dock_viewport_window(
+                    child, parent, ui.DockPosition.RIGHT, ratio
+                )
+            n_rows = len(rows)
+            for r in range(1, n_rows):
+                split = 1.0 / float(n_rows - r + 1)
+                for c, name in enumerate(rows[r]):
+                    child = self._viewport_window_name(name)
+                    parent = (
+                        PRIMARY_VIEWPORT_WINDOW
+                        if c == 0
+                        else self._viewport_window_name(rows[r - 1][c])
+                    )
+                    await self._dock_viewport_window(
+                        child, parent, ui.DockPosition.BOTTOM, split
+                    )
 
         omni.kit.async_engine.run_coroutine(_dock_all())
 
-    def _should_use_viewport_grid(self) -> bool:
-        if self.viewport_camera != "CAM_A" or len(self.viewport_cameras_extra) < 5:
-            return False
-        grid_names = {name for row in VIEWPORT_GRID_ROWS for name in row}
+    def _select_viewport_grid(self) -> Optional[tuple]:
+        if self.viewport_camera != "CAM_A":
+            return None
+        requested = {self.viewport_camera}
+        requested.update(n.strip() for n in self.viewport_cameras_extra if str(n).strip())
         rig_names = set(self.camera_rig.cameras_name)
-        return grid_names.issubset(rig_names)
+        for grid in VIEWPORT_GRID_PRESETS:
+            names = {name for row in grid for name in row}
+            if names.issubset(rig_names) and names.issubset(requested):
+                return grid
+        return None
 
-    def _setup_viewports_grid(self) -> tuple[str, List[str]]:
+    def _setup_viewports_grid(self, rows: tuple) -> tuple[str, List[str]]:
         primary = self._set_viewport_camera()
         extra_paths: List[str] = []
-        for row in VIEWPORT_GRID_ROWS:
+        for row in rows:
             for camera_name in row:
                 if camera_name == self.viewport_camera:
                     continue
@@ -368,7 +372,7 @@ class CameraRigTrajectoryRecorder(Node):
                 if path:
                     extra_paths.append(path)
                     simulation_app.update()
-        self._schedule_viewport_grid_docking()
+        self._schedule_viewport_grid_docking(rows)
         for _ in range(12):
             simulation_app.update()
         return primary, extra_paths
@@ -389,8 +393,9 @@ class CameraRigTrajectoryRecorder(Node):
         return primary, extra_paths
 
     def _setup_viewports(self) -> tuple[str, List[str]]:
-        if self._should_use_viewport_grid():
-            return self._setup_viewports_grid()
+        grid = self._select_viewport_grid()
+        if grid is not None:
+            return self._setup_viewports_grid(grid)
         return self._setup_viewports_legacy()
 
     @staticmethod
@@ -613,16 +618,25 @@ class CameraRigTrajectoryRecorder(Node):
         self.world.reset()
         for _ in range(3):
             simulation_app.update()
+        # occupancy 已在 main 算完；渲染前补不可见地面，避免 indoor 场景视口发黑
+        add_ground_plane("/World/ground_plane")
         self.camera_rig.initialize(attach_depth=False, attach_semantic=False)
         for _ in range(3):
             self.world.step(render=True)
             simulation_app.update()
+        grid = self._select_viewport_grid()
         vp_cam, vp_extra = self._setup_viewports()
         self._ensure_realtime_render_mode()
         self._follow_viewport_now()
         self._refresh_sim_view(n_frames=6 if self.fast_preview else 8)
         if vp_extra:
-            vp_info = f"{vp_cam} + {len(vp_extra)} 额外视口"
+            if grid is not None:
+                vp_info = (
+                    f"{vp_cam} + {len(vp_extra)} 额外视口 "
+                    f"({len(grid)}×{len(grid[0])} 网格)"
+                )
+            else:
+                vp_info = f"{vp_cam} + {len(vp_extra)} 额外视口"
         else:
             vp_info = vp_cam
         preview_mode = "快速预览" if self.fast_preview else "高质量预览"

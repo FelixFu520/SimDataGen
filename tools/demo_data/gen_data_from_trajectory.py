@@ -38,7 +38,7 @@ _ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__fi
 if _ROOT_DIR not in sys.path:
     sys.path.insert(0, _ROOT_DIR)
 
-from sdg_utils.usd import load_usd_file
+from sdg_utils.usd import add_ground_plane, load_usd_file
 from sdg_utils.occupancy import (
     get_mesh_paths,
     build_mesh_id_map,
@@ -259,6 +259,9 @@ if __name__ == "__main__":
     for _ in range(5):
         simulation_app.update()
     logger.info(f"[步骤2][结束] mesh={len(mesh_paths)}, 耗时 {_fmt_duration(time.perf_counter() - step2_start)}")
+
+    # occupancy 已由录制阶段完成；渲染前补不可见地面，避免 indoor 场景发黑
+    add_ground_plane("/World/ground_plane")
 
     # ============ 步骤 3: 相机 ============
     logger.info("[步骤3][开始] 创建 CameraRig")

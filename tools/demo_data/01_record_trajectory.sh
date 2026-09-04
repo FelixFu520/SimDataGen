@@ -2,13 +2,22 @@
 # 1. 采集轨迹s
 cd /home/fufa/projects2026/SimDataGen
 ./tools/demo_data/run_record_camera_rig_trajectory.sh \
-  --scene_usd /home/fufa/projects2026/SimDataGen/asset_extern/home_000/interior_template.usdc \
-  --camera_usd /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA.usd \
-  --output_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory/home_000 \
-  --init_pose 1 1 1.5 0 0 0 \
+  --scene_usd /home/fufa/projects2026/SimDataGen/extern_asserts/Intime/home_000/interior_template.usdc \
+  --camera_usd /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA_regular_dog.usd \
+  --output_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory/home_000_dog \
+  --init_pose 1 1 0.3 0 0 0 \
   --occupancy-resolution 0.1 \
   --viewport-camera CAM_A \
-  --viewport-cameras CAM_B CAM_C CAM_D CAM_Front CAM_Back
+  --viewport-cameras CAM_B CAM_C CAM_D 
+
+./tools/demo_data/run_record_camera_rig_trajectory.sh \
+  --scene_usd /home/fufa/projects2026/SimDataGen/extern_asserts/Intime/home_000/interior_template.usdc \
+  --camera_usd /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA_regular_human.usd \
+  --output_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory/home_000_human \
+  --init_pose 1 1 0.8 0 0 0 \
+  --occupancy-resolution 0.1 \
+  --viewport-camera CAM_A \
+  --viewport-cameras CAM_B CAM_C CAM_D 
 
 cd /home/fufa/projects2026/SimDataGen
 source /opt/ros/humble/setup.bash
@@ -27,6 +36,15 @@ cd /home/fufa/projects2026/SimDataGen
   --viewport-camera CAM_A \
   --viewport-cameras CAM_B CAM_C CAM_D CAM_Front CAM_Back
 
+./tools/demo_data/run_record_camera_rig_trajectory.sh \
+  --scene_usd /home/fufa/projects2026/SimDataGen/extern_asserts/TaoBao03/014_SkylineRestaurant/SkylineRestaurant_P.usd \
+  --camera_usd /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA_regular_human.usd \
+  --output_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory/SkylineRestaurant_human \
+  --init_pose 17 8 1.5 0 0 0 \
+  --occupancy-resolution 0.25 \
+  --viewport-camera CAM_A \
+  --viewport-cameras CAM_B CAM_C CAM_D
+
 cd /home/fufa/projects2026/SimDataGen
 source /opt/ros/humble/setup.bash
 export ROS_DOMAIN_ID=0
@@ -43,7 +61,15 @@ cd /home/fufa/projects2026/SimDataGen
   --occupancy-resolution 0.5 \
   --viewport-camera CAM_A \
   --viewport-cameras CAM_B CAM_C CAM_D CAM_Front CAM_Back
-  
+
+./tools/demo_data/run_record_camera_rig_trajectory.sh \
+  --scene_usd /home/fufa/projects2026/SimDataGen/extern_asserts/TaoBao03/112_Bunker/Demonstration.usd \
+  --camera_usd /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA_regular_dog.usd \
+  --output_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory/112_Bunker_dog \
+  --init_pose 13 76 17.5 0 0 0 \
+  --occupancy-resolution 0.5 \
+  --viewport-camera CAM_A \
+  --viewport-cameras CAM_B CAM_C CAM_D
 
 cd /home/fufa/projects2026/SimDataGen
 source /opt/ros/humble/setup.bash
@@ -61,7 +87,15 @@ cd /home/fufa/projects2026/SimDataGen
   --occupancy-resolution 1 \
   --viewport-camera CAM_A \
   --viewport-cameras CAM_B CAM_C CAM_D CAM_Front CAM_Back
-  
+
+./tools/demo_data/run_record_camera_rig_trajectory.sh \
+  --scene_usd /home/fufa/projects2026/SimDataGen/extern_asserts/TaoBao04/102_AsianArch/ExampleGathering.usd \
+  --camera_usd /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA_regular_human.usd \
+  --output_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory/102_AsianArch_human \
+  --init_pose 74 17 23.5 0 0 0 \
+  --occupancy-resolution 1 \
+  --viewport-camera CAM_A \
+  --viewport-cameras CAM_B CAM_C CAM_D
 
 cd /home/fufa/projects2026/SimDataGen
 source /opt/ros/humble/setup.bash

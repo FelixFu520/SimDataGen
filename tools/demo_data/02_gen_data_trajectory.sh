@@ -1,11 +1,35 @@
- # 2. 生成数据
-#./tools/demo_data/run_gen_data_from_trajectory.sh \
-#  --scene_usd_url /home/fufa/projects2026/SimDataGen/asset_extern/home_000/interior_template.usdc \
-#  --camera_usd_url /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA.usd \
-#  --trajectory_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory/home_000 \
-#  --trajectory_tags 0 \
-#  --output_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory_data/home_000 \
-#  --point_stride 1
+# 2. 生成数据
+./tools/demo_data/run_gen_data_from_trajectory.sh \
+ --scene_usd_url /home/fufa/projects2026/SimDataGen/extern_asserts/Intime/home_000/interior_template.usdc \
+ --camera_usd_url /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA_regular_dog.usd \
+ --trajectory_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory/home_000_dog \
+ --trajectory_tags 1 \
+ --output_dir /home/fufa/projects2026/SimDataGen/workdir/tractory_data/home_000_dog \
+ --point_stride 1
+
+ ./tools/demo_data/run_gen_data_from_trajectory.sh \
+ --scene_usd_url /home/fufa/projects2026/SimDataGen/extern_asserts/Intime/home_000/interior_template.usdc \
+ --camera_usd_url /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA_regular_human.usd \
+ --trajectory_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory/home_000_human \
+ --trajectory_tags 3 \
+ --output_dir /home/fufa/projects2026/SimDataGen/workdir/tractory_data/home_000_human \
+ --point_stride 1
+
+ ./tools/demo_data/run_gen_data_from_trajectory.sh \
+ --scene_usd_url /home/fufa/projects2026/SimDataGen/extern_asserts/TaoBao03/112_Bunker/Demonstration.usd \
+ --camera_usd_url /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA_regular_dog.usd \
+ --trajectory_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory/112_Bunker_dog \
+ --trajectory_tags 0 \
+ --output_dir /home/fufa/projects2026/SimDataGen/workdir/tractory_data/112_Bunker_dog \
+ --point_stride 1
+
+  ./tools/demo_data/run_gen_data_from_trajectory.sh \
+ --scene_usd_url /home/fufa/projects2026/SimDataGen/extern_asserts/TaoBao03/014_SkylineRestaurant/SkylineRestaurant_P.usd \
+ --camera_usd_url /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA_regular_human.usd \
+ --trajectory_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory/SkylineRestaurant_human \
+ --trajectory_tags 0 \
+ --output_dir /home/fufa/projects2026/SimDataGen/workdir/tractory_data/SkylineRestaurant_human \
+ --point_stride 1
 
 # ./tools/demo_data/run_gen_data_from_trajectory.sh \
 #   --scene_usd_url /home/fufa/projects2026/SimDataGen/asset_extern/TaoBao04/102_AsianArch/ExampleGathering.usd \
