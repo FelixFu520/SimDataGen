@@ -31,16 +31,16 @@
  --output_dir /home/fufa/projects2026/SimDataGen/workdir/tractory_data/SkylineRestaurant_human \
  --point_stride 1
 
-./tools/demo_data/run_gen_data_from_trajectory.sh \
---scene_usd_url /home/fufa/projects2026/SimDataGen/extern_asserts/TaoBao04/102_AsianArch/ExampleGathering.usd \
+CUDA_VISIBLE_DEVICES=0 ./tools/demo_data/run_gen_data_from_trajectory.sh \
+--scene_usd_url /home/fufa/projects2026/SimDataGen/extern_asserts/TaoBao11/AsianVillage/Asian_Village.usd \
 --camera_usd_url /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA_regular_human.usd \
 --trajectory_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory/AsianVillage_human \
 --trajectory_tags 1 \
 --output_dir /home/fufa/projects2026/SimDataGen/workdir/tractory_data/AsianVillage_human \
 --point_stride 1
 
-./tools/demo_data/run_gen_data_from_trajectory.sh \
---scene_usd_url /home/fufa/projects2026/SimDataGen/extern_asserts/TaoBao04/102_AsianArch/ExampleGathering.usd \
+CUDA_VISIBLE_DEVICES=1 ./tools/demo_data/run_gen_data_from_trajectory.sh \
+--scene_usd_url /home/fufa/projects2026/SimDataGen/extern_asserts/TaoBao11/AsianVillage/Asian_Village.usd \
 --camera_usd_url /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA_regular_dog.usd \
 --trajectory_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory/AsianVillage_dog \
 --trajectory_tags 1 \
