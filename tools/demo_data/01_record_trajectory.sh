@@ -113,7 +113,24 @@ cd /home/fufa/projects2026/SimDataGen
   --occupancy-resolution 1 \
   --viewport-camera CAM_A \
   --viewport-cameras CAM_B CAM_C CAM_D CAM_Front CAM_Back
-  
+
+./tools/demo_data/run_record_camera_rig_trajectory.sh \
+  --scene_usd /home/fufa/projects2026/SimDataGen/extern_asserts/TaoBao11/AsianVillage/Asian_Village.usd \
+  --camera_usd /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA_regular_dog.usd \
+  --output_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory/AsianVillage_dog \
+  --init_pose 28 "-106" "-33.5" 0 0 90 \
+  --occupancy-resolution 1 \
+  --viewport-camera CAM_A \
+  --viewport-cameras CAM_B CAM_C CAM_D
+
+./tools/demo_data/run_record_camera_rig_trajectory.sh \
+  --scene_usd /home/fufa/projects2026/SimDataGen/extern_asserts/TaoBao11/AsianVillage/Asian_Village.usd \
+  --camera_usd /home/fufa/projects2026/SimDataGen/assets/cameras/oak_camera_4lut_2H110SA_regular_human.usd \
+  --output_dir /home/fufa/projects2026/SimDataGen/workdir/trajectory/AsianVillage_human \
+  --init_pose 28 "-106" "-33.5" 0 0 90 \
+  --occupancy-resolution 1 \
+  --viewport-camera CAM_A \
+  --viewport-cameras CAM_B CAM_C CAM_D
 
 cd /home/fufa/projects2026/SimDataGen
 source /opt/ros/humble/setup.bash
