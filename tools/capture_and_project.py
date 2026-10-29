@@ -87,17 +87,25 @@ def mei_unproject(u, v, fx, fy, cx, cy, xi, k1, k2, p1, p2, iters=20):
 
 def depth_to_pointcloud_mei(rgb, depth, mask, fx, fy, cx, cy, xi,
                             k1, k2, p1, p2,
-                            min_pz=0.05, min_depth=0.01, max_depth=100.0):
+                            min_pz=None, min_depth=0.01, max_depth=100.0):
+    """depth 是射线欧氏距离。射线归一化后乘 depth。"""
     H, W = depth.shape
     valid = (mask > 0) & np.isfinite(depth) & (depth > min_depth) & (depth < max_depth)
     v_g, u_g = np.mgrid[0:H, 0:W]
     u, v = u_g[valid].astype(np.float64), v_g[valid].astype(np.float64)
     d = depth[valid].astype(np.float64)
     rays = mei_unproject(u, v, fx, fy, cx, cy, xi, k1, k2, p1, p2)
-    ray_z = rays[:, 2]
-    stable = ray_z > min_pz
-    pts = rays[stable] * (d[stable] / ray_z[stable])[:, None]
+    norm = np.linalg.norm(rays, axis=1)
+    stable = (norm > 1e-6) & np.isfinite(rays).all(axis=1)
+    rays = rays[stable] / norm[stable, None]
+    d = d[stable]
     cols = rgb[valid][stable]
+    if min_pz is not None:
+        keep = rays[:, 2] > min_pz
+        rays = rays[keep]
+        d = d[keep]
+        cols = cols[keep]
+    pts = rays * d[:, None]
     return pts, cols
 
 
@@ -111,7 +119,8 @@ def depth_to_pointcloud_pinhole(rgb, depth, mask, K,
     d = depth[valid].astype(np.float64)
     pix = np.stack([u, v, np.ones_like(u)], axis=-1)  # (N,3)
     rays = (K_inv @ pix.T).T
-    pts = rays * d[:, None]
+    norm = np.linalg.norm(rays, axis=1, keepdims=True)
+    pts = rays / np.maximum(norm, 1e-12) * d[:, None]
     cols = rgb[valid]
     return pts, cols
 
@@ -237,7 +246,7 @@ def main():
     # ---- 5. 反投影成世界系点云 ----
     logger.info("[5/5] 反投影 RGB+Depth -> 世界系点云")
     rgb_list = rig.get_cameras_rgb()
-    depth_list = rig.get_cameras_distance_to_image_plane()
+    depth_list = rig.get_cameras_distance_to_camera()
 
     all_world_pts, all_world_cols = [], []
     for name, rgb, depth in zip(rig.get_cameras_name(), rgb_list, depth_list):

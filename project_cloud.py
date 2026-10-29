@@ -141,18 +141,13 @@ def depth_to_pointcloud_mei(rgb: np.ndarray, depth: np.ndarray,
                             xi: float,
                             k1: float, k2: float, p1: float, p2: float,
                             undistort_iters: int = 20,
-                            min_pz: float = 0.05,
+                            min_pz: float | None = None,
                             min_depth: float = 0.01,
                             max_depth: float = 100.0) -> tuple:
-    """使用 MEI 模型将 RGB + depth 转为点云。
+    """使用 MEI 模型将 RGB + 射线距离转为点云。
 
-    对 LUT 鱼眼相机, Isaac Sim 的 distance_to_image_plane 是 3D 交点在
-    相机坐标系中的 Z 坐标(沿光轴方向)。每个像素的光线方向由 MEI 模型决定,
-    因此需要用 MEI 反投影得到射线方向 ray = (mx, my, P_z), 然后用
-    scale = depth / P_z 缩放, 使得反投影后的 Z 坐标等于 depth 值。
-
-    MEI 模型 xi > 1 时, 边缘像素的 P_z 可能接近 0 或为负, 导致 scale 发散或翻转。
-    通过 min_pz 阈值过滤这些数值不稳定的边缘像素。
+    depth 是光心到命中点的欧氏距离。射线先归一化，再乘 depth。
+    min_pz 为 None 时保留大角度射线。
     """
     H, W = depth.shape
 
@@ -165,15 +160,17 @@ def depth_to_pointcloud_mei(rgb: np.ndarray, depth: np.ndarray,
 
     rays = mei_unproject(u_valid, v_valid, fx, fy, cx, cy, xi,
                          k1, k2, p1, p2, undistort_iters)
-
-    # scale = depth / P_z, 使得 Z_cam = P_z * scale = depth
-    ray_z = rays[:, 2]
-    stable = ray_z > min_pz
-    scale = depth_valid[stable] / ray_z[stable]
-
-    points = rays[stable] * scale[:, np.newaxis]
+    norm = np.linalg.norm(rays, axis=1)
+    stable = (norm > 1e-6) & np.isfinite(rays).all(axis=1)
+    rays = rays[stable] / norm[stable, None]
+    depth_valid = depth_valid[stable]
     colors = rgb[valid][stable]
-
+    if min_pz is not None:
+        keep = rays[:, 2] > min_pz
+        rays = rays[keep]
+        depth_valid = depth_valid[keep]
+        colors = colors[keep]
+    points = rays * depth_valid[:, np.newaxis]
     return points, colors
 
 
@@ -182,7 +179,7 @@ def depth_to_pointcloud_pinhole(rgb: np.ndarray, depth: np.ndarray,
                                 K: np.ndarray,
                                 min_depth: float = 0.01,
                                 max_depth: float = 100.0) -> tuple:
-    """使用标准 Pinhole 模型将 RGB + depth 转为点云。"""
+    """使用标准 Pinhole 模型将 RGB + 射线距离转为点云。"""
     H, W = depth.shape
     K_inv = np.linalg.inv(K)
 
@@ -195,7 +192,8 @@ def depth_to_pointcloud_pinhole(rgb: np.ndarray, depth: np.ndarray,
 
     pixels = np.stack([u_valid, v_valid, np.ones_like(u_valid)], axis=-1)  # (N, 3)
     rays = (K_inv @ pixels.T).T  # (N, 3)
-    points = rays * depth_valid[:, np.newaxis]
+    norm = np.linalg.norm(rays, axis=1, keepdims=True)
+    points = rays / np.maximum(norm, 1e-12) * depth_valid[:, np.newaxis]
 
     colors = rgb[valid]
 
@@ -397,7 +395,7 @@ def process_single_camera(cam_name: str, data_dir: str, frame_id: str,
     lut_path = _resolve_lut_enter_path(intrinsics_full)
     if lut_path is not None:
         lut_enter = _load_lut_enter_cached(lut_cache, lut_path)
-        print(f"  LUT 反投影 (distance_to_image_plane, enter EXR): {lut_path}")
+        print(f"  LUT 反投影 (distance_to_camera, enter EXR): {lut_path}")
         pts_cam, colors_cam = depth_to_pointcloud_lut(
             rgb, depth, mask, lut_enter,
             min_depth=0.01, max_depth=100.0,
@@ -438,7 +436,7 @@ def process_single_camera(cam_name: str, data_dir: str, frame_id: str,
                 rgb, depth, mask,
                 fx, fy, cx, cy, xi, dist,
                 undistort_iters=undistort_iters,
-                min_pz=0.05, min_depth=0.01, max_depth=100.0,
+                min_depth=0.01, max_depth=100.0,
             )
             suffix = "mei_world"
         else:

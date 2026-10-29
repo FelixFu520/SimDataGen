@@ -103,11 +103,14 @@ def depth_to_pointcloud_lut(
     lut_enter: np.ndarray,
     min_depth: float = 0.01,
     max_depth: float = 100.0,
-    min_forward_z: float = 0.05,
+    min_forward_z: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """用 LUT enter 方向 + distance_to_image_plane 深度反投影到 OpenCV 相机系。
+    """用 LUT enter 方向 + distance_to_camera 深度反投影到 OpenCV 相机系。
 
-    LUT 存的是 RTX 相机系 (X右,Y上,Z后) 单位方向;depth 为沿 -Z 到成像面的距离。
+    LUT 存的是 RTX 相机系 (X右,Y上,Z后) 单位方向。
+    depth 是光心到命中点的欧氏距离，点 = 单位射线 × depth。
+    90° 及更大角度不再除以 cos(θ)。min_forward_z 为 None 时保留这些点；
+    传入正数时仍丢掉 OpenCV 前向坐标不大于该值的点。
     """
     img_h, img_w = depth.shape
     valid = (
@@ -124,17 +127,20 @@ def depth_to_pointcloud_lut(
     v = v_idx.astype(np.float64)
     d = depth[v_idx, u_idx].astype(np.float64)
     rays_rtx = sample_lut_rays_at_pixels(lut_enter, u, v, img_w, img_h)
-    norm = np.linalg.norm(rays_rtx, axis=1, keepdims=True)
-    rays_rtx = rays_rtx / np.maximum(norm, 1e-12)
+    norm = np.linalg.norm(rays_rtx, axis=1)
+    good = norm > _RAY_NORM_MIN
+    if not np.any(good):
+        return np.empty((0, 3), dtype=np.float64), np.empty((0, 3), dtype=np.uint8)
+    rays_rtx = rays_rtx[good] / norm[good, None]
+    d = d[good]
+    colors = rgb[v_idx, u_idx][good]
 
-    # distance_to_image_plane:沿 RTX -Z(相机前方)的距离
-    denom = np.maximum(-rays_rtx[:, 2], 1e-6)
-    t = d / denom
-    pts_rtx = rays_rtx * t[:, None]
+    pts_rtx = rays_rtx * d[:, None]
     pts_cv = pts_rtx * np.array([1.0, -1.0, -1.0], dtype=np.float64)
-
-    stable = pts_cv[:, 2] > min_forward_z
-    return pts_cv[stable], rgb[v_idx, u_idx][stable]
+    stable = np.isfinite(pts_cv).all(axis=1)
+    if min_forward_z is not None:
+        stable &= pts_cv[:, 2] > min_forward_z
+    return pts_cv[stable], colors[stable]
 
 
 def depth_to_pointcloud_mei(
@@ -149,10 +155,14 @@ def depth_to_pointcloud_mei(
     dist_coeffs: List[float],
     min_depth: float = 0.01,
     max_depth: float = 100.0,
-    min_pz: float = 0.05,
+    min_pz: float | None = None,
     undistort_iters: int = 20,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Mei omni 解析反投影到 OpenCV 相机系(无 LUT 时回退)。"""
+    """Mei omni 解析反投影到 OpenCV 相机系(无 LUT 时回退)。
+
+    depth 是射线欧氏距离。射线先归一化再乘 depth。
+    min_pz 为 None 时保留大角度射线；传入正数时丢掉 OpenCV 前向分量不大于该值的点。
+    """
     k1, k2, p1, p2 = (list(dist_coeffs) + [0.0, 0.0, 0.0, 0.0])[:4]
     valid = (
         (mask > 0)
@@ -181,11 +191,18 @@ def depth_to_pointcloud_mei(
     sqrt_t = np.sqrt(np.maximum(1.0 + (1.0 - xi * xi) * rho2, 0.0))
     pz = 1.0 - xi * (rho2 + 1.0) / (xi + sqrt_t)
     rays = np.stack([mx, my, pz], axis=-1)
-    rays = rays / np.maximum(np.linalg.norm(rays, axis=1, keepdims=True), 1e-12)
-    ray_z = rays[:, 2]
-    stable = ray_z > min_pz
-    pts = rays[stable] * (d[stable] / ray_z[stable])[:, None]
-    return pts, rgb[v_idx, u_idx][stable]
+    norm = np.linalg.norm(rays, axis=1)
+    stable = (norm > 1e-6) & np.isfinite(rays).all(axis=1)
+    rays = rays[stable] / norm[stable, None]
+    d = d[stable]
+    colors = rgb[v_idx, u_idx][stable]
+    if min_pz is not None:
+        keep = rays[:, 2] > min_pz
+        rays = rays[keep]
+        d = d[keep]
+        colors = colors[keep]
+    pts = rays * d[:, None]
+    return pts, colors
 
 
 def equidistant_principal_domain(dist_coeffs: List[float]) -> tuple[float, float]:
@@ -302,9 +319,13 @@ def depth_to_pointcloud_equidistant(
     dist_coeffs: List[float],
     min_depth: float = 0.01,
     max_depth: float = 100.0,
-    min_pz: float = 0.05,
+    min_pz: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """等距鱼眼解析反投影到 OpenCV 相机系(无 LUT 时回退)。"""
+    """等距鱼眼解析反投影到 OpenCV 相机系(无 LUT 时回退)。
+
+    depth 是射线欧氏距离，点 = 单位射线 × depth。
+    min_pz 为 None 时保留大角度射线。
+    """
     valid = (
         (mask > 0)
         & np.isfinite(depth)
@@ -320,7 +341,14 @@ def depth_to_pointcloud_equidistant(
     d = depth[v_idx, u_idx].astype(np.float64)
     dx, dy, dz, ray_ok = equidistant_unproject(u, v, fx, fy, cx, cy, dist_coeffs)
     rays = np.stack([dx, dy, dz], axis=-1)
-    ray_z = rays[:, 2]
-    stable = ray_ok & (ray_z > min_pz)
-    pts = rays[stable] * (d[stable] / ray_z[stable])[:, None]
-    return pts, rgb[v_idx, u_idx][stable]
+    stable = ray_ok & np.isfinite(rays).all(axis=1)
+    rays = rays[stable]
+    d = d[stable]
+    colors = rgb[v_idx, u_idx][stable]
+    if min_pz is not None:
+        keep = rays[:, 2] > min_pz
+        rays = rays[keep]
+        d = d[keep]
+        colors = colors[keep]
+    pts = rays * d[:, None]
+    return pts, colors

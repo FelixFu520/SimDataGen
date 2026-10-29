@@ -279,7 +279,7 @@ if __name__ == "__main__":
     #   1. 构造 CameraRig (此时仅 reference USD + 构建 IsaacCamera 包装器, 还未 initialize)
     #   2. world.reset()
     #   3. rig.initialize(attach_depth=True, attach_semantic=True)
-    #      - attach distance_to_image_plane / semantic_segmentation / instance_id_segmentation
+    #      - attach distance_to_camera / semantic_segmentation / instance_id_segmentation
     camera_usd_path = resolve_camera_usd_path(args.camera_usd_url)
     logger.info(f"相机 USD 路径: {camera_usd_path}")
     camera_rig = CameraRig(
@@ -323,7 +323,7 @@ if __name__ == "__main__":
     step5_start = time.perf_counter()
     save_rgb_dir = os.path.join(args.output_dir, "rgb") # 相机RGB图像
     save_rbg_discard_dir = os.path.join(args.output_dir, "rgb_discard") # 相机RGB图像被丢弃
-    save_depth_dir = os.path.join(args.output_dir, "depth") # 相机距离到图像平面图像
+    save_depth_dir = os.path.join(args.output_dir, "depth") # 沿射线的欧氏距离
     save_semantic_dir = os.path.join(args.output_dir, "semantic") # 相机语义分割图(uint16, 值=mesh的semantic_id)
     save_common_dir = os.path.join(args.output_dir, "common") # 相机外参, 内参等
     os.makedirs(save_rgb_dir, exist_ok=True)

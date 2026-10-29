@@ -24,7 +24,7 @@ def _ensure_square_pixel_aperture(prim: Usd.Prim, width: int, height: int) -> No
 
     IsaacCamera 初始化时若宽高比不一致会静默改写 verticalAperture(日志里
     'Setting verticalAperture to ... to ensure square pixels'),导致
-    generalizedProjection LUT 鱼眼的 distance_to_image_plane 与标定几何错位。
+    generalizedProjection LUT 鱼眼的射线方向与标定几何错位。
     """
     if width <= 0 or height <= 0:
         return
@@ -324,8 +324,8 @@ class CameraRig:
         """在 world.reset() 之后调用,初始化所有 IsaacCamera。
 
         Args:
-            attach_depth: 是否同时 attach `distance_to_image_plane` annotator
-                          (需要采深度时打开;只取 RGB 可以关掉省内存)。
+            attach_depth: 是否同时 attach `distance_to_camera` annotator
+                          (沿射线的欧氏距离;需要采深度时打开,只取 RGB 可以关掉省内存)。
             attach_semantic: 是否同时 attach `semantic_segmentation` 与
                              `instance_id_segmentation` annotator
                              (需要采语义图时打开)。
@@ -333,7 +333,7 @@ class CameraRig:
         for cam in self.isaac_cameras:
             cam.initialize()
             if attach_depth:
-                cam.attach_annotator("distance_to_image_plane")
+                cam.attach_annotator("distance_to_camera")
             if attach_semantic:
                 # semantic_segmentation: 直接返回我们写入的 id_{N} label
                 cam.attach_annotator("semantic_segmentation", colorize=False)
@@ -478,9 +478,36 @@ class CameraRig:
         """对每个相机调用 IsaacCamera.get_rgb(),返回 (H,W,3) uint8 数组列表。"""
         return [cam.get_rgb() for cam in self.isaac_cameras]
 
+    def get_cameras_distance_to_camera(self) -> List[Optional[np.ndarray]]:
+        """返回每个相机的 distance_to_camera，形状 (H, W) float。
+
+        数值是光心到命中点的欧氏距离(米)，不是光轴 Z。
+        IsaacCamera.get_depth() 只读 distance_to_image_plane，所以这里直接取 annotator。
+        """
+        images: List[Optional[np.ndarray]] = []
+        for cam in self.isaac_cameras:
+            annot = getattr(cam, "_custom_annotators", {}).get("distance_to_camera")
+            if annot is None:
+                logger.warning(f"相机未挂 distance_to_camera: {cam.prim_path}")
+                images.append(None)
+                continue
+            data = annot.get_data()
+            if isinstance(data, dict):
+                data = data.get("data")
+            if data is None:
+                images.append(None)
+                continue
+            if hasattr(data, "numpy"):
+                data = data.numpy()
+            arr = np.asarray(data)
+            if arr.ndim == 3 and arr.shape[-1] == 1:
+                arr = arr[..., 0]
+            images.append(arr)
+        return images
+
     def get_cameras_distance_to_image_plane(self) -> List[Optional[np.ndarray]]:
-        """对每个相机调用 IsaacCamera.get_depth(),返回 (H,W) float32 列表。"""
-        return [cam.get_depth() for cam in self.isaac_cameras]
+        """旧名。现在返回的是射线距离，不是光轴 Z。"""
+        return self.get_cameras_distance_to_camera()
 
     def depth_to_pointcloud_opencv(
         self,
@@ -491,10 +518,10 @@ class CameraRig:
     ) -> tuple[np.ndarray, np.ndarray]:
         """将 RGB+depth 反投影为 OpenCV 相机坐标系下的 3D 点。
 
-        - 有 LUT enter 纹理:用与 RTX 一致的射线方向 + distance_to_image_plane
+        - 有 LUT enter 纹理:用与 RTX 一致的射线方向 × distance_to_camera
         - 等距鱼眼标定:回退 Kannala-Brandt 解析模型
         - 仅有 omni 标定:回退 Mei 解析模型
-        - 针孔:用 K 反投影
+        - 针孔:用 K 反投影。depth 同样是射线距离，先把射线归一化再相乘
         """
         width, height = self.resolutions[name]
         if mask is None:
@@ -530,7 +557,8 @@ class CameraRig:
         d = depth[v_idx, u_idx].astype(np.float64)
         pix = np.stack([u, v, np.ones_like(u)], axis=-1)
         rays = (np.linalg.inv(K) @ pix.T).T
-        pts = rays * d[:, None]
+        norm = np.linalg.norm(rays, axis=1, keepdims=True)
+        pts = rays / np.maximum(norm, 1e-12) * d[:, None]
         return pts, rgb[v_idx, u_idx]
 
     def get_intrinsics_matrix(self, name: str) -> np.ndarray:
@@ -656,7 +684,7 @@ class CameraRig:
           <output_dir>/<camera_name>/<frame_id>.png
         """
         fid = self._resolve_frame_id(frame_id, path_idx, point_idx)
-        for name, depth in zip(self.cameras_name, self.get_cameras_distance_to_image_plane()):
+        for name, depth in zip(self.cameras_name, self.get_cameras_distance_to_camera()):
             if depth is None:
                 logger.warning(f"save_cameras_depth: {name} depth is None, skip")
                 continue
