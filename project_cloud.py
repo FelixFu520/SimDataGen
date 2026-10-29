@@ -30,6 +30,7 @@ from PIL import Image
 
 from sdg_utils.projection_lut import (
     read_lut_enter_exr,
+    depth_to_pointcloud_equidistant,
     depth_to_pointcloud_lut,
     depth_to_pointcloud_mei as depth_to_pointcloud_mei_shared,
 )
@@ -292,6 +293,17 @@ def _load_lut_enter_cached(cache: dict, exr_path: str) -> np.ndarray:
     return cache[exr_path]
 
 
+def _is_equidistant(intrinsics_full: dict) -> bool:
+    if not isinstance(intrinsics_full, dict):
+        return False
+    cal = intrinsics_full.get("calibration")
+    if not isinstance(cal, dict):
+        return False
+    model = str(cal.get("model", ""))
+    dist_model = str(cal.get("distortion_model", ""))
+    return model == "equidistant" or dist_model == "equidistant"
+
+
 def _extract_mei_params(intrinsics_full: dict):
     """从 common/*.npy 里 `intrinsics_full` 字段提取 MEI 反投影所需参数。
 
@@ -391,6 +403,25 @@ def process_single_camera(cam_name: str, data_dir: str, frame_id: str,
             min_depth=0.01, max_depth=100.0,
         )
         suffix = "lut_world"
+    elif _is_equidistant(intrinsics_full):
+        cal = intrinsics_full["calibration"]
+        fx = float(cal["fx_px"])
+        fy = float(cal["fy_px"])
+        cx = float(cal["cx_px"])
+        cy = float(cal["cy_px"])
+        dist = [float(v) for v in cal.get("distortion_coeffs", [])]
+        if downsample > 1:
+            fx /= downsample
+            fy /= downsample
+            cx /= downsample
+            cy /= downsample
+        print(f"  equidistant 反投影 (fx={fx:.1f}, fy={fy:.1f}, "
+              f"cx={cx:.1f}, cy={cy:.1f})")
+        pts_cam, colors_cam = depth_to_pointcloud_equidistant(
+            rgb, depth, mask, fx, fy, cx, cy, dist,
+            min_depth=0.01, max_depth=100.0,
+        )
+        suffix = "equidistant_world"
     else:
         mei_params = _extract_mei_params(intrinsics_full)
         if mei_params is not None:

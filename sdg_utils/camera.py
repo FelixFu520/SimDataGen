@@ -13,6 +13,7 @@ from .misc import generate_high_contrast_colors
 from .projection_lut import (
     read_lut_enter_exr as _read_lut_enter_exr,
     mask_from_lut_enter_exr as _mask_from_lut_enter_exr,
+    depth_to_pointcloud_equidistant,
     depth_to_pointcloud_lut,
     depth_to_pointcloud_mei,
 )
@@ -491,6 +492,7 @@ class CameraRig:
         """将 RGB+depth 反投影为 OpenCV 相机坐标系下的 3D 点。
 
         - 有 LUT enter 纹理:用与 RTX 一致的射线方向 + distance_to_image_plane
+        - 等距鱼眼标定:回退 Kannala-Brandt 解析模型
         - 仅有 omni 标定:回退 Mei 解析模型
         - 针孔:用 K 反投影
         """
@@ -504,6 +506,14 @@ class CameraRig:
 
         omni_cal = self.calibration.get(name)
         if omni_cal is not None:
+            dist_model = str(omni_cal.get("distortion_model", ""))
+            cam_model = str(omni_cal.get("model", ""))
+            if dist_model == "equidistant" or cam_model == "equidistant":
+                return depth_to_pointcloud_equidistant(
+                    rgb, depth, mask,
+                    omni_cal["fx"], omni_cal["fy"], omni_cal["cx"], omni_cal["cy"],
+                    omni_cal["distortion_coeffs"],
+                )
             return depth_to_pointcloud_mei(
                 rgb, depth, mask,
                 omni_cal["fx"], omni_cal["fy"], omni_cal["cx"], omni_cal["cy"],

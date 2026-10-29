@@ -186,3 +186,141 @@ def depth_to_pointcloud_mei(
     stable = ray_z > min_pz
     pts = rays[stable] * (d[stable] / ray_z[stable])[:, None]
     return pts, rgb[v_idx, u_idx][stable]
+
+
+def equidistant_principal_domain(dist_coeffs: List[float]) -> tuple[float, float]:
+    """Kannala-Brandt 等距模型主分支的 (theta_limit, theta_d_max)。
+
+    多项式在更大角度上可能折叠。只保留导数首次变非正之前的主分支，
+    与 OpenCV fisheye 从 theta_d 出发的牛顿迭代一致。
+    """
+    k1, k2, k3, k4 = (list(dist_coeffs) + [0.0, 0.0, 0.0, 0.0])[:4]
+    thetas = np.linspace(0.0, np.pi, 20001)
+    t2 = thetas * thetas
+    t4 = t2 * t2
+    t6 = t4 * t2
+    t8 = t4 * t4
+    theta_d = thetas * (1.0 + k1 * t2 + k2 * t4 + k3 * t6 + k4 * t8)
+    dg = 1.0 + 3.0 * k1 * t2 + 5.0 * k2 * t4 + 7.0 * k3 * t6 + 9.0 * k4 * t8
+    neg = np.where(dg[1:] <= 0.0)[0]
+    if neg.size == 0:
+        return float(np.pi), float(theta_d[-1])
+    end = int(neg[0]) + 2
+    j = int(np.argmax(theta_d[:end]))
+    return float(thetas[j]), float(theta_d[j])
+
+
+def _equidistant_theta_d(theta: np.ndarray, k1: float, k2: float, k3: float, k4: float):
+    t2 = theta * theta
+    t4 = t2 * t2
+    t6 = t4 * t2
+    t8 = t4 * t4
+    theta_d = theta * (1.0 + k1 * t2 + k2 * t4 + k3 * t6 + k4 * t8)
+    dtheta_d = 1.0 + 3.0 * k1 * t2 + 5.0 * k2 * t4 + 7.0 * k3 * t6 + 9.0 * k4 * t8
+    return theta_d, dtheta_d
+
+
+def equidistant_unproject(
+    u: np.ndarray,
+    v: np.ndarray,
+    fx: float,
+    fy: float,
+    cx: float,
+    cy: float,
+    dist_coeffs: List[float],
+    *,
+    theta_limit: float | None = None,
+    theta_d_max: float | None = None,
+    iters: int = 20,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """OpenCV / Kalibr equidistant：像素 -> OpenCV 单位射线。无效像素为零向量。"""
+    k1, k2, k3, k4 = (list(dist_coeffs) + [0.0, 0.0, 0.0, 0.0])[:4]
+    if theta_limit is None or theta_d_max is None:
+        theta_limit, theta_d_max = equidistant_principal_domain(dist_coeffs)
+
+    mx = (u - cx) / fx
+    my = (v - cy) / fy
+    theta_d = np.sqrt(mx * mx + my * my)
+    theta = np.clip(theta_d, 0.0, theta_limit)
+    for _ in range(iters):
+        theta_d_hat, dtheta_d = _equidistant_theta_d(theta, k1, k2, k3, k4)
+        denom = np.where(np.abs(dtheta_d) < 1e-8, 1e-8, dtheta_d)
+        theta = np.clip(theta - (theta_d_hat - theta_d) / denom, 0.0, theta_limit)
+
+    theta_d_hat, _ = _equidistant_theta_d(theta, k1, k2, k3, k4)
+    valid = (
+        (theta_d <= theta_d_max + 1e-4)
+        & (np.abs(theta_d_hat - theta_d) < 1e-4)
+        & np.isfinite(theta)
+    )
+    small = theta_d < 1e-8
+    scale = np.sin(theta) / np.maximum(theta_d, 1e-12)
+    dx = np.where(small, 0.0, mx * scale)
+    dy = np.where(small, 0.0, my * scale)
+    dz = np.where(small, 1.0, np.cos(theta))
+    norm = np.maximum(np.sqrt(dx * dx + dy * dy + dz * dz), 1e-12)
+    dx = np.where(valid, dx / norm, 0.0)
+    dy = np.where(valid, dy / norm, 0.0)
+    dz = np.where(valid, dz / norm, 0.0)
+    return dx, dy, dz, valid
+
+
+def equidistant_project(
+    x: np.ndarray,
+    y: np.ndarray,
+    z: np.ndarray,
+    fx: float,
+    fy: float,
+    cx: float,
+    cy: float,
+    dist_coeffs: List[float],
+    *,
+    theta_limit: float | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """OpenCV fisheye 正向投影。theta 超过主分支的方向标为无效。"""
+    k1, k2, k3, k4 = (list(dist_coeffs) + [0.0, 0.0, 0.0, 0.0])[:4]
+    if theta_limit is None:
+        theta_limit, _ = equidistant_principal_domain(dist_coeffs)
+    radius = np.sqrt(x * x + y * y)
+    theta = np.arctan2(radius, z)
+    theta_d, _ = _equidistant_theta_d(theta, k1, k2, k3, k4)
+    scale = np.where(radius < 1e-12, 0.0, theta_d / np.maximum(radius, 1e-12))
+    u = fx * (x * scale) + cx
+    v = fy * (y * scale) + cy
+    valid = (theta >= 0.0) & (theta <= theta_limit + 1e-6) & np.isfinite(u) & np.isfinite(v)
+    return u, v, valid
+
+
+def depth_to_pointcloud_equidistant(
+    rgb: np.ndarray,
+    depth: np.ndarray,
+    mask: np.ndarray,
+    fx: float,
+    fy: float,
+    cx: float,
+    cy: float,
+    dist_coeffs: List[float],
+    min_depth: float = 0.01,
+    max_depth: float = 100.0,
+    min_pz: float = 0.05,
+) -> tuple[np.ndarray, np.ndarray]:
+    """等距鱼眼解析反投影到 OpenCV 相机系(无 LUT 时回退)。"""
+    valid = (
+        (mask > 0)
+        & np.isfinite(depth)
+        & (depth > min_depth)
+        & (depth < max_depth)
+    )
+    v_idx, u_idx = np.where(valid)
+    if u_idx.size == 0:
+        return np.empty((0, 3), dtype=np.float64), np.empty((0, 3), dtype=np.uint8)
+
+    u = u_idx.astype(np.float64)
+    v = v_idx.astype(np.float64)
+    d = depth[v_idx, u_idx].astype(np.float64)
+    dx, dy, dz, ray_ok = equidistant_unproject(u, v, fx, fy, cx, cy, dist_coeffs)
+    rays = np.stack([dx, dy, dz], axis=-1)
+    ray_z = rays[:, 2]
+    stable = ray_ok & (ray_z > min_pz)
+    pts = rays[stable] * (d[stable] / ray_z[stable])[:, None]
+    return pts, rgb[v_idx, u_idx][stable]

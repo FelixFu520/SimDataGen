@@ -25,6 +25,23 @@ import numpy as np
 CAMERAS = ("CAM_A", "CAM_B", "CAM_C", "CAM_D")
 
 
+def _resolve_cameras(base: str, cameras: list[str] | None) -> tuple[str, ...]:
+    """默认沿用 OAK 四目；目录里没有 CAM_A 时改用 rgb/ 下实际相机。"""
+    if cameras:
+        return tuple(cameras)
+    rgb_root = os.path.join(base, "rgb")
+    if os.path.isdir(os.path.join(rgb_root, CAMERAS[0])):
+        return CAMERAS
+    if os.path.isdir(rgb_root):
+        found = sorted(
+            name for name in os.listdir(rgb_root)
+            if os.path.isdir(os.path.join(rgb_root, name))
+        )
+        if found:
+            return tuple(found)
+    return CAMERAS
+
+
 def _read_mask(path: str) -> np.ndarray:
     m = cv2.imread(path, cv2.IMREAD_UNCHANGED)
     if m is None:
@@ -113,6 +130,12 @@ def _depth_npy_to_vis_bgr(arr: np.ndarray) -> np.ndarray:
 def main() -> int:
     p = argparse.ArgumentParser(description="mask 与 RGB/深度叠加可视化")
     p.add_argument("--base", type=str, default=None, help="debug 根目录(其下含 mask/ rgb/ depth/)",)
+    p.add_argument(
+        "--cameras",
+        nargs="*",
+        default=None,
+        help="要检查的相机名；省略时优先 CAM_A..D，否则使用 rgb/ 下的子目录",
+    )
     p.add_argument("--frame", type=str, default="", help="帧 stem,如 0000_0000;默认取 rgb 目录下第一张")
     p.add_argument("--out", type=str, default=None, help="输出目录,默认 {base}/overlay_verify",)
     p.add_argument(
@@ -133,10 +156,12 @@ def main() -> int:
     out_dir = os.path.abspath(args.out) if args.out else os.path.join(base, "overlay_verify")
     os.makedirs(out_dir, exist_ok=True)
 
+    cameras = _resolve_cameras(base, args.cameras)
+
     # 推断默认 frame
     frame = args.frame.strip()
     if not frame:
-        sample_rgb = os.path.join(base, "rgb", CAMERAS[0])
+        sample_rgb = os.path.join(base, "rgb", cameras[0])
         if not os.path.isdir(sample_rgb):
             print(f"找不到 RGB 目录: {sample_rgb}", file=sys.stderr)
             return 1
@@ -148,7 +173,7 @@ def main() -> int:
 
     alpha = float(np.clip(args.alpha, 0.0, 1.0))
 
-    for cam in CAMERAS:
+    for cam in cameras:
         mask_path = os.path.join(base, "mask", f"{cam}_mask.png")
         rgb_path = os.path.join(base, "rgb", cam, f"{frame}.jpg")
         if not os.path.isfile(rgb_path):
